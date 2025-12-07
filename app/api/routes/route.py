@@ -49,7 +49,7 @@ async def get_process_status():
     responses={
         status.HTTP_200_OK: {"model": ReconciliationAct},
         status.HTTP_404_NOT_FOUND: {"model": StatusResponse},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": StatusResponse},
+        # status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": StatusResponse},
         status.HTTP_500_INTERNAL_SERVER_ERROR: {"model": StatusResponse},
     },
 )
