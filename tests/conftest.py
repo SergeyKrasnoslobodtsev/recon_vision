@@ -1,8 +1,21 @@
+import sys
 import pytest
 import shutil
 import os
 import tempfile
 from app.services.cache_in_disk import CacheInDisk
+from _pytest.logging import LogCaptureFixture
+from loguru import logger
+
+sys.stdout.reconfigure(encoding="utf-8")
+
+
+# coloring for loguru in pytest output
+@pytest.fixture(autouse=True)
+def configure_logger(caplog: LogCaptureFixture):
+    """Фикстура для настройки логгера loguru для тестов"""
+    logger.remove()
+    logger.add(sys.stdout, level="DEBUG", colorize=True)
 
 
 @pytest.fixture
