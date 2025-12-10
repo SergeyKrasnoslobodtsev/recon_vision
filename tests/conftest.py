@@ -8,6 +8,7 @@ from _pytest.logging import LogCaptureFixture
 from loguru import logger
 
 sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
 
 
 # coloring for loguru in pytest output
