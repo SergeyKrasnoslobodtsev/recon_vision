@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+import numpy as np
 
 
 class BBox(BaseModel):
@@ -41,3 +42,9 @@ class BBox(BaseModel):
         if x_min < x_max and y_min < y_max:
             return (x_max - x_min) * (y_max - y_min)
         return 0.0
+
+    def roi(self, image: np.ndarray):
+        """Возвращает вырезанную область изображения по BBox"""
+        return image[
+            int(self.y_min) : int(self.y_max), int(self.x_min) : int(self.x_max)
+        ]
