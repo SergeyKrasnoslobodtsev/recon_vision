@@ -95,10 +95,7 @@ class TestTableDetector:
 
             preprocessor_img = ImagePreprocessor()
             processed = preprocessor_img.process(original)
-            # hardcode get preprocessed image for table detection
-            table_mask = preprocessor.preprocessor.create_table_mask(processed)
-
-            bboxes = preprocessor._find_tables(table_mask)
+            bboxes = preprocessor.extract_tables(processed)
             debug_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
             for i, bbox in enumerate(bboxes):
                 debug_image = drawer_bbox_and_label(

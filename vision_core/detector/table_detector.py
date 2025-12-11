@@ -1,7 +1,5 @@
 import numpy as np
 import cv2
-from loguru import logger
-from vision_core.entities.table import Table
 from vision_core.entities.bbox import BBox
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 
@@ -18,36 +16,9 @@ class TableDetector:
         self.preprocessor = TablePreprocessor()
 
     def extract_tables(self, image: np.ndarray):
-        """
-        Детектирует таблицы на изображении
-
-        Args:
-            image: Grayscale изображение
-
-        Returns:
-            Список детектированных таблиц
-        """
-        logger.info("Начало детекции таблиц на изображении")
-        tables = []
-
         table_mask = self.preprocessor.create_table_mask(image)
-        bboxes = self._find_tables(table_mask)
 
-        for bbox in bboxes:
-            table = Table(
-                id="",
-                bbox=bbox,
-                cells=[],
-                num_rows=0,
-                num_cols=0,
-                start_page=0,
-                end_page=0,
-            )
-            tables.append(table)
-            logger.debug(f"Таблица обнаружена с площадью {bbox.area} и BBox {bbox}")
-
-        logger.info(f"Детекция завершена. Найдено таблиц: {len(tables)}")
-        return tables
+        return self._find_tables(table_mask)
 
     def _find_tables(self, table_mask: np.ndarray):
         contours, _ = cv2.findContours(
