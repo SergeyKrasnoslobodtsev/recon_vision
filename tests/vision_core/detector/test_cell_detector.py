@@ -5,6 +5,7 @@ from loguru import logger
 from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.detector.table_detector import TableDetector
+from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.entities.bbox import BBox
 import numpy as np
 
@@ -12,8 +13,8 @@ import numpy as np
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
 
 
-class TestTableDetector:
-    """Тесты для TableDetector"""
+class TestCellDetector:
+    """Тесты для TableCellDetector"""
 
     @pytest.fixture
     def pdf_path(self) -> Path:
@@ -28,9 +29,14 @@ class TestTableDetector:
         return output_dir
 
     @pytest.fixture
-    def preprocessor(self) -> TableDetector:
+    def table_detector(self) -> TableDetector:
         """Экземпляр TableDetector"""
         return TableDetector()
+
+    @pytest.fixture
+    def cell_detector(self) -> TableCellDetector:
+        """Экземпляр TableCellDetector"""
+        return TableCellDetector()
 
     @pytest.fixture
     def drawer_bbox_and_label(self):
@@ -70,11 +76,12 @@ class TestTableDetector:
 
         return _drawer_bbox_and_label
 
-    def test_find_tables(
+    def test_find_lines_from_mask_table(
         self,
         pdf_path: Path,
         output_dir: Path,
-        preprocessor: TableDetector,
+        table_detector: TableDetector,
+        cell_detector: TableCellDetector,
         drawer_bbox_and_label,
     ):
         """Тестирует детекцию таблиц на изображении"""
@@ -87,7 +94,7 @@ class TestTableDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files[:1]:
+        for test_file in pdf_files:  # ограничение по количеству тестовых файлов
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
             with PDFLoader(pdf_bytes) as loader:
@@ -96,14 +103,28 @@ class TestTableDetector:
             preprocessor_img = ImagePreprocessor()
             processed = preprocessor_img.process(original)
             # hardcode get preprocessed image for table detection
-            table_mask = preprocessor.preprocessor.create_table_mask(processed)
+            table_mask = table_detector.preprocessor.create_table_mask(processed)
 
-            bboxes = preprocessor._find_tables(table_mask)
+            bboxes = table_detector._find_tables(table_mask)
+
             debug_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
             for i, bbox in enumerate(bboxes):
                 debug_image = drawer_bbox_and_label(
                     debug_image, bbox, label=f"Table {i + 1}"
                 )
+
+                cells_bboxes = cell_detector.extract_cells(
+                    table_mask, bbox, merge_mode="all"
+                )
+
+                for cell_bbox in cells_bboxes:
+                    debug_image = drawer_bbox_and_label(
+                        debug_image,
+                        cell_bbox.bbox,
+                        label=f"R{cell_bbox.row}C{cell_bbox.col}S{cell_bbox.colspan}",
+                        color=(0, 255, 0),
+                    )
+
             cv2.imwrite(
                 str(output_dir / f"{test_file.stem}_detected_tables.png"), debug_image
             )
