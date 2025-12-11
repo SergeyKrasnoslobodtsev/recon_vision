@@ -172,65 +172,69 @@ class ImageAnalyzer:
 
     def _measure_skew_angle(self, gray: np.ndarray) -> float:
         """Определяет угол наклона изображения"""
-        _, width = gray.shape
+        from deskew import determine_skew
 
-        # Денойзинг для более точного определения линий
-        denoised = cv2.fastNlMeansDenoising(gray, h=3)
+        angle = determine_skew(gray)
+        return angle
+        # _, width = gray.shape
 
-        # Бинаризация
-        _, binary = cv2.threshold(
-            denoised, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU
-        )
+        # # Денойзинг для более точного определения линий
+        # denoised = cv2.fastNlMeansDenoising(gray, h=3)
 
-        # Поиск линий
-        lines = cv2.HoughLinesP(
-            binary,
-            1,
-            np.pi / 180,
-            200,
-            minLineLength=width / 12,
-            maxLineGap=width / 150,
-        )
+        # # Бинаризация
+        # _, binary = cv2.threshold(
+        #     denoised, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU
+        # )
 
-        if lines is None or len(lines) < 5:
-            return 0.0
+        # # Поиск линий
+        # lines = cv2.HoughLinesP(
+        #     binary,
+        #     1,
+        #     np.pi / 180,
+        #     200,
+        #     minLineLength=width / 12,
+        #     maxLineGap=width / 150,
+        # )
 
-        # Вычисляем углы линий
-        angles = []
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angles.append(np.arctan2(y2 - y1, x2 - x1))
+        # if lines is None or len(lines) < 5:
+        #     return 0.0
 
-        # Определяем ориентацию (альбомная/портретная)
-        landscape = (
-            np.sum([abs(angle) > np.pi / 4 for angle in angles]) > len(angles) / 2
-        )
+        # # Вычисляем углы линий
+        # angles = []
+        # for line in lines:
+        #     x1, y1, x2, y2 = line[0]
+        #     angles.append(np.arctan2(y2 - y1, x2 - x1))
 
-        # Фильтруем углы в зависимости от ориентации
-        if landscape:
-            angles = [
-                angle
-                for angle in angles
-                if np.deg2rad(90 - self.max_skew)
-                < abs(angle)
-                < np.deg2rad(90 + self.max_skew)
-            ]
-        else:
-            angles = [
-                angle for angle in angles if abs(angle) < np.deg2rad(self.max_skew)
-            ]
+        # # Определяем ориентацию (альбомная/портретная)
+        # landscape = (
+        #     np.sum([abs(angle) > np.pi / 4 for angle in angles]) > len(angles) / 2
+        # )
 
-        if len(angles) < 5:
-            return 0.0
+        # # Фильтруем углы в зависимости от ориентации
+        # if landscape:
+        #     angles = [
+        #         angle
+        #         for angle in angles
+        #         if np.deg2rad(90 - self.max_skew)
+        #         < abs(angle)
+        #         < np.deg2rad(90 + self.max_skew)
+        #     ]
+        # else:
+        #     angles = [
+        #         angle for angle in angles if abs(angle) < np.deg2rad(self.max_skew)
+        #     ]
 
-        # Медианный угол
-        angle_deg = np.rad2deg(np.median(angles))
+        # if len(angles) < 5:
+        #     return 0.0
 
-        # Корректировка для альбомной ориентации
-        if landscape:
-            if angle_deg < 0:
-                angle_deg += 90
-            elif angle_deg > 0:
-                angle_deg -= 90
+        # # Медианный угол
+        # angle_deg = np.rad2deg(np.median(angles))
 
-        return float(angle_deg)
+        # # Корректировка для альбомной ориентации
+        # if landscape:
+        #     if angle_deg < 0:
+        #         angle_deg += 90
+        #     elif angle_deg > 0:
+        #         angle_deg -= 90
+
+        # return float(angle_deg)
