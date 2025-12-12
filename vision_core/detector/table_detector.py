@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 from vision_core.entities.bbox import BBox
-from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 
 
 class TableDetector:
@@ -13,11 +12,8 @@ class TableDetector:
             min_table_area: Минимальная площадь таблицы
         """
         self.min_table_area = min_table_area
-        self.preprocessor = TablePreprocessor()
 
-    def extract_tables(self, image: np.ndarray):
-        table_mask = self.preprocessor.create_table_mask(image)
-
+    def extract_raw_tables(self, table_mask: np.ndarray):
         return self._find_tables(table_mask)
 
     def _find_tables(self, table_mask: np.ndarray):
