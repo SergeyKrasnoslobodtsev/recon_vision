@@ -2,11 +2,11 @@ import pytest
 import cv2
 from pathlib import Path
 from loguru import logger
-from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 from vision_core.detector.table_detector import TableDetector
 from vision_core.detector.table_cell_detector import TableCellDetector
-from vision_core.entities.bbox import BBox
+
 import numpy as np
 
 
@@ -16,70 +16,13 @@ import numpy as np
 class TestCellDetector:
     """Тесты для TableCellDetector"""
 
-    @pytest.fixture
-    def pdf_path(self) -> Path:
-        """Путь к папке с тестовыми PDF"""
-        return Path("./examples/test")
-
-    @pytest.fixture
-    def output_dir(self) -> Path:
-        """Путь к папке для сохранения результатов"""
-        output_dir = Path("./examples/output/table_detection")
-        output_dir.mkdir(parents=True, exist_ok=True)
-        return output_dir
-
-    @pytest.fixture
-    def table_detector(self) -> TableDetector:
-        """Экземпляр TableDetector"""
-        return TableDetector()
-
-    @pytest.fixture
-    def cell_detector(self) -> TableCellDetector:
-        """Экземпляр TableCellDetector"""
-        return TableCellDetector()
-
-    @pytest.fixture
-    def drawer_bbox_and_label(self):
-        """Функция для отрисовки BBox и метки на изображении"""
-
-        def _drawer_bbox_and_label(
-            image: np.ndarray, bbox: BBox, label: str, color: tuple = (255, 0, 0)
-        ) -> np.ndarray:
-            """Отрисовывает BBox и метку на изображении"""
-            pt1 = (int(bbox.x_min), int(bbox.y_min))
-            pt2 = (int(bbox.x_max), int(bbox.y_max))
-            cv2.rectangle(image, pt1, pt2, color, 2)
-            # добавить фон для текста
-            (text_width, text_height), _ = cv2.getTextSize(
-                label,
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                2,
-            )
-            cv2.rectangle(
-                image,
-                (pt1[0], pt1[1] - text_height - 15),
-                (pt1[0] + text_width, pt1[1]),
-                (255, 0, 0),
-                -1,
-            )
-            cv2.putText(
-                image,
-                label,
-                (pt1[0], pt1[1] - 10),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2,
-            )
-            return image
-
-        return _drawer_bbox_and_label
-
     def test_find_lines_from_mask_table(
         self,
         pdf_path: Path,
         output_dir: Path,
+        pdf_loader_single_page: np.ndarray,
+        preprocessor_img: ImagePreprocessor,
+        preprocessor_table: TablePreprocessor,
         table_detector: TableDetector,
         cell_detector: TableCellDetector,
         drawer_bbox_and_label,
@@ -94,27 +37,32 @@ class TestCellDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files:  # ограничение по количеству тестовых файлов
+        for test_file in pdf_files[:1]:
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
-            with PDFLoader(pdf_bytes) as loader:
-                original = loader.get_page_image(0, dpi=300)
+            original = pdf_loader_single_page(pdf_bytes)
 
-            preprocessor_img = ImagePreprocessor()
             processed = preprocessor_img.process(original)
-            # hardcode get preprocessed image for table detection
-            table_mask = table_detector.preprocessor.create_table_mask(processed)
 
-            bboxes = table_detector._find_tables(table_mask)
+            table_mask = preprocessor_table.create_table_mask(processed)
 
-            debug_image = cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR)
+            bboxes = table_detector.extract_raw_tables(table_mask)
+
+            debug_image = original.copy()
+
             for i, bbox in enumerate(bboxes):
                 debug_image = drawer_bbox_and_label(
-                    debug_image, bbox, label=f"Table {i + 1}"
+                    debug_image,
+                    bbox,
+                    label=f"Table {i + 1}",
+                    color="blue",
+                    position="top",
                 )
 
                 cells_bboxes = cell_detector.extract_cells(
-                    table_mask, bbox, merge_mode="all"
+                    table_mask,
+                    bbox,
+                    merge_mode="all",
                 )
 
                 for cell_bbox in cells_bboxes:
@@ -122,9 +70,8 @@ class TestCellDetector:
                         debug_image,
                         cell_bbox.bbox,
                         label=f"R{cell_bbox.row}C{cell_bbox.col}S{cell_bbox.colspan}",
-                        color=(0, 255, 0),
+                        color="darkgreen",
+                        position="bottom",
                     )
 
-            cv2.imwrite(
-                str(output_dir / f"{test_file.stem}_detected_tables.png"), debug_image
-            )
+            debug_image.save(output_dir / f"detected_cells_{test_file.stem}.png")
