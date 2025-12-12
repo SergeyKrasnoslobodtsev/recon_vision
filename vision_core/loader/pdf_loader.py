@@ -3,6 +3,8 @@ import numpy as np
 from PIL import Image
 import cv2
 
+from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+
 
 class PDFLoader:
     """Загрузчик PDF документов"""
@@ -16,6 +18,7 @@ class PDFLoader:
         """
         self.pdf_bytes = pdf_bytes
         self.doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        self.preprocessor = ImagePreprocessor()
 
     @property
     def num_pages(self) -> int:
@@ -57,11 +60,7 @@ class PDFLoader:
             numpy.ndarray: Препроцессированное BGR изображение для OpenCV
         """
         image = self.get_page_image(page_num, dpi=dpi)
-
-        from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
-
-        preprocessor = ImagePreprocessor()
-        processed_image = preprocessor.process(image)
+        processed_image = self.preprocessor.process(image)
 
         return processed_image
 
