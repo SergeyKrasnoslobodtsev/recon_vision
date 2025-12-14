@@ -43,8 +43,21 @@ class BBox(BaseModel):
             return (x_max - x_min) * (y_max - y_min)
         return 0.0
 
-    def roi(self, image: np.ndarray):
+    def roi(self, image: np.ndarray) -> np.ndarray:
         """Возвращает вырезанную область изображения по BBox"""
-        return image[
-            int(self.y_min) : int(self.y_max), int(self.x_min) : int(self.x_max)
-        ]
+        h, w = image.shape[:2]
+        y_min = max(0, int(self.y_min))
+        y_max = min(h, int(self.y_max))
+        x_min = max(0, int(self.x_min))
+        x_max = min(w, int(self.x_max))
+
+        if y_min >= y_max or x_min >= x_max:
+            return np.array([], dtype=image.dtype)
+
+        return image[y_min:y_max, x_min:x_max]
+
+    def iou(self, other: "BBox") -> float:
+        """Метрика IoU для двух BBox"""
+        intersection = self.intersect(other)
+        union = self.area + other.area - intersection
+        return intersection / union if union > 0 else 0.0

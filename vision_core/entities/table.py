@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from functools import cached_property
 from .cell import Cell
 from .bbox import BBox
 
@@ -34,17 +35,6 @@ class Table(BaseModel):
         center_y = (self.bbox.y_min + self.bbox.y_max) / 2
         return (center_x, center_y)
 
-    @property
-    def _cell_index(self) -> dict[tuple[int, int], Cell]:
-        """Кэшированный индекс ячеек для быстрого доступа"""
-        if not hasattr(self, "_cached_index"):
-            self._cached_index = {(c.row, c.col): c for c in self.cells}
-        return self._cached_index
-
-    def get_cell(self, row: int, col: int) -> Cell | None:
-        """Получить ячейку по номеру строки и столбца"""
-        return self._cell_index.get((row, col))
-
     def padding(self, pixel: float) -> "Table":
         """Возвращает Table с добавленным отступом в пикселях"""
         return Table(
@@ -61,30 +51,50 @@ class Table(BaseModel):
         """Площадь пересечения двух таблиц"""
         return self.bbox.intersect(other.bbox)
 
-    def get_rows(self, include_merged: bool = False) -> list[list[Cell]]:
-        """Получить ячейки, сгруппированные по строкам"""
+    @cached_property
+    def _rows_index(self) -> list[list[Cell]]:
+        """Индекс строк для быстрого доступа"""
         rows = [[] for _ in range(self.num_rows)]
         for cell in self.cells:
-            if include_merged:
-                # Добавляем во все строки, которые занимает ячейка
-                for r in range(cell.row, cell.row + cell.rowspan):
-                    if r < self.num_rows:
-                        rows[r].append(cell)
-            else:
-                rows[cell.row].append(cell)
+            rows[cell.row].append(cell)
+        return rows
+
+    @cached_property
+    def _cols_index(self) -> list[list[Cell]]:
+        """Индекс столбцов для быстрого доступа"""
+        cols = [[] for _ in range(self.num_cols)]
+        for cell in self.cells:
+            cols[cell.col].append(cell)
+        return cols
+
+    @cached_property
+    def _cell_index(self) -> dict[tuple[int, int], Cell]:
+        return {(c.row, c.col): c for c in self.cells}
+
+    def get_cell(self, row: int, col: int) -> Cell | None:
+        """Получить ячейку по номеру строки и столбца"""
+        return self._cell_index.get((row, col))
+
+    def get_rows(self, include_merged: bool = False) -> list[list[Cell]]:
+        if not include_merged:
+            return self._rows_index.copy()
+
+        # Для включения объединенных ячеек
+        rows = [[] for _ in range(self.num_rows)]
+        for cell in self.cells:
+            for r in range(cell.row, min(cell.row + cell.rowspan, self.num_rows)):
+                rows[r].append(cell)
         return rows
 
     def get_cols(self, include_merged: bool = False) -> list[list[Cell]]:
-        """Получить ячейки, сгруппированные по столбцам"""
+        if not include_merged:
+            return self._cols_index.copy()
+
+        # Для включения объединенных ячеек
         cols = [[] for _ in range(self.num_cols)]
         for cell in self.cells:
-            if include_merged:
-                # Добавляем во все столбцы, которые занимает ячейка
-                for c in range(cell.col, cell.col + cell.colspan):
-                    if c < self.num_cols:
-                        cols[c].append(cell)
-            else:
-                cols[cell.col].append(cell)
+            for c in range(cell.col, min(cell.col + cell.colspan, self.num_cols)):
+                cols[c].append(cell)
         return cols
 
     def median_height_blobs_per_cells(self) -> float:

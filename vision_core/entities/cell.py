@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 from .bbox import BBox
+from typing import Union, Optional
+from datetime import datetime
 
 
 class Cell(BaseModel):
@@ -7,7 +9,7 @@ class Cell(BaseModel):
     col: int
     colspan: int = 1
     rowspan: int = 1
-    value: str | None = None
+    value: Optional[Union[str, int, float, datetime]] = None
     bbox: BBox
     blobs: list[BBox] = []
 
@@ -59,39 +61,56 @@ class Cell(BaseModel):
         """Площадь пересечения двух ячеек"""
         return self.bbox.intersect(other.bbox)
 
-    def get_largest_free_space(self, padding: float = 2.0) -> BBox | None:
+    def get_largest_free_space(self, padding: float = 1.0) -> BBox | None:
         """Возвращает наибольшее свободное пространство в ячейке"""
         if not self.blobs:
             return self.bbox
 
-        # Ищем максимальное свободное пространство между blobs
-        max_free_area = 0
-        best_bbox = None
+        free_spaces = []
 
-        # Справа от последнего blob
-        rightmost = max(self.blobs, key=lambda b: b.x_max)
-        right_space = BBox(
-            x_min=rightmost.x_max + padding,
-            y_min=self.bbox.y_min,
-            x_max=self.bbox.x_max,
-            y_max=self.bbox.y_max,
-        )
-        if right_space.width > 0 and right_space.area > max_free_area:
-            max_free_area = right_space.area
-            best_bbox = right_space
+        for blob in self.blobs:
+            # Справа
+            if blob.x_max + padding < self.bbox.x_max:
+                free_spaces.append(
+                    BBox(
+                        x_min=blob.x_max + padding,
+                        y_min=self.bbox.y_min,
+                        x_max=self.bbox.x_max,
+                        y_max=self.bbox.y_max,
+                    )
+                )
+            # Слева
+            if blob.x_min - padding > self.bbox.x_min:
+                free_spaces.append(
+                    BBox(
+                        x_min=self.bbox.x_min,
+                        y_min=self.bbox.y_min,
+                        x_max=blob.x_min - padding,
+                        y_max=self.bbox.y_max,
+                    )
+                )
+            # Снизу
+            if blob.y_max + padding < self.bbox.y_max:
+                free_spaces.append(
+                    BBox(
+                        x_min=self.bbox.x_min,
+                        y_min=blob.y_max + padding,
+                        x_max=self.bbox.x_max,
+                        y_max=self.bbox.y_max,
+                    )
+                )
+            # Сверху
+            if blob.y_min - padding > self.bbox.y_min:
+                free_spaces.append(
+                    BBox(
+                        x_min=self.bbox.x_min,
+                        y_min=self.bbox.y_min,
+                        x_max=self.bbox.x_max,
+                        y_max=blob.y_min - padding,
+                    )
+                )
 
-        # Снизу от последнего blob
-        bottommost = max(self.blobs, key=lambda b: b.y_max)
-        bottom_space = BBox(
-            x_min=self.bbox.x_min,
-            y_min=bottommost.y_max + padding,
-            x_max=self.bbox.x_max,
-            y_max=self.bbox.y_max,
-        )
-        if bottom_space.height > 0 and bottom_space.area > max_free_area:
-            best_bbox = bottom_space
-
-        return best_bbox
+        return max(free_spaces, key=lambda b: b.area) if free_spaces else None
 
     def __str__(self) -> str:
         return f"Cell(row={self.row}, col={self.col}, colspan={self.colspan}, rowspan={self.rowspan}, value={self.value}, bbox={self.bbox}, blobs={self.blobs})"
