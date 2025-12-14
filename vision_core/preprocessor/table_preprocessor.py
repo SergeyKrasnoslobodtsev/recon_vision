@@ -22,8 +22,18 @@ class TablePreprocessor:
     def _create_table_mask(self, h_mask: np.ndarray, v_mask: np.ndarray):
         # удаляем шумы
         intersec = cv2.bitwise_and(h_mask, v_mask)
-        cleaned_h_mask = self._clean_mask(h_mask, intersec, type="horizontal")
-        cleaned_v_mask = self._clean_mask(v_mask, intersec, type="vertical")
+        cleaned_h_mask = self._clean_mask(
+            h_mask,
+            intersec,
+            type="horizontal",
+            min_intersections=1,
+        )
+        cleaned_v_mask = self._clean_mask(
+            v_mask,
+            intersec,
+            type="vertical",
+            min_intersections=2,
+        )
         cleaned_mask = cv2.add(cleaned_h_mask, cleaned_v_mask)
 
         return cleaned_mask
