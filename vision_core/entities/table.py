@@ -7,11 +7,11 @@ from .bbox import BBox
 class Table(BaseModel):
     id: str
     bbox: BBox
-    num_rows: int
-    num_cols: int
+    num_rows: int = 0
+    num_cols: int = 0
     cells: list["Cell"] = []
-    start_page: int
-    end_page: int
+    start_page: int = 0
+    end_page: int = 0
 
     @property
     def area(self) -> float:
