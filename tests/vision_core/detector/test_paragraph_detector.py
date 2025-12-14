@@ -2,7 +2,10 @@ import pytest
 from pathlib import Path
 from loguru import logger
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.preprocessor.table_preprocessor import TablePreprocessor
+from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
 from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.detector.table_detector import TableDetector
 
 import numpy as np
 
@@ -19,6 +22,9 @@ class TestParagraphDetector:
         output_dir: Path,
         pdf_loader_single_page: np.ndarray,
         preprocessor_img: ImagePreprocessor,
+        preprocessor_table: TablePreprocessor,
+        table_detector: TableDetector,
+        preprocessor_paragraph: ParagraphPreprocessor,
         paragraph_detector: ParagraphDetector,
         drawer_bbox_and_label,
     ):
@@ -32,13 +38,20 @@ class TestParagraphDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files[:1]:
+        for test_file in pdf_files:
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
             processed = preprocessor_img.process(original)
+            mask_table = preprocessor_table.create_table_mask(processed)
 
-            bboxes = paragraph_detector.extract_paragraphs(processed)
+            bboxes = table_detector.extract_raw_tables(mask_table)
+
+            mask_paragraph = preprocessor_paragraph.create_paragraph_mask(
+                processed, bboxes
+            )
+
+            bboxes = paragraph_detector.extract_paragraphs(mask_paragraph)
             debug_image = original.copy()
 
             for i, bbox in enumerate(bboxes):

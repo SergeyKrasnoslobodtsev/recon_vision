@@ -1,5 +1,4 @@
 import pytest
-import cv2
 from pathlib import Path
 from loguru import logger
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
@@ -46,6 +45,63 @@ class TestCellDetector:
 
             table_mask = preprocessor_table.create_table_mask(processed)
 
+            v_lines, h_lines = cell_detector._detect_lines(table_mask)
+
+            debug_image = original.copy()
+
+            from PIL import Image, ImageDraw
+
+            debug_image = Image.fromarray(debug_image)
+            Image.fromarray(table_mask).show()
+
+            for line in v_lines:
+                draw = ImageDraw.Draw(debug_image)
+                draw.line(
+                    [(line[0], line[1]), (line[2], line[3])],
+                    fill="red",
+                    width=2,
+                )
+
+            for line in h_lines:
+                draw = ImageDraw.Draw(debug_image)
+                draw.line(
+                    [(line[0], line[1]), (line[2], line[3])],
+                    fill="blue",
+                    width=2,
+                )
+
+            debug_image.save(output_dir / f"detected_lines_{test_file.stem}.png")
+
+    def test_extract_cells(
+        self,
+        pdf_path: Path,
+        output_dir: Path,
+        pdf_loader_single_page: np.ndarray,
+        preprocessor_img: ImagePreprocessor,
+        preprocessor_table: TablePreprocessor,
+        table_detector: TableDetector,
+        cell_detector: TableCellDetector,
+        drawer_bbox_and_label,
+    ):
+        """Тестирует детекцию таблиц на изображении"""
+
+        if not pdf_path.exists():
+            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+
+        pdf_files = list(pdf_path.glob("*.pdf"))
+
+        if not pdf_files:
+            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
+
+        for test_file in pdf_files:
+            logger.info(f"Тестирование на файле: {test_file.name}")
+            pdf_bytes = test_file.read_bytes()
+            original = pdf_loader_single_page(pdf_bytes)
+
+            processed = preprocessor_img.process(original)
+
+            table_mask = preprocessor_table.create_table_mask(processed)
+
             bboxes = table_detector.extract_raw_tables(table_mask)
 
             debug_image = original.copy()
@@ -62,7 +118,7 @@ class TestCellDetector:
                 cells_bboxes = cell_detector.extract_cells(
                     table_mask,
                     bbox,
-                    merge_mode="all",
+                    merge_mode="cols",
                 )
 
                 for cell_bbox in cells_bboxes:
