@@ -3,38 +3,27 @@ import numpy as np
 from typing import Optional
 from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
+from vision_core.config import TableCellDetectorConfig
 
 
 class TableCellDetector:
     """Извлекатель ячеек из таблицы"""
 
-    def __init__(
-        self,
-        min_cell: int = 10,
-        padding: int = 10,
-        threshold_line: int = 2,
-        hough_threshold: int = 50,
-        min_line_length: int = 10,
-        max_line_gap: int = 25,
-        line_angle_threshold: float = 45.0,
-    ):
+    def __init__(self, cfg: Optional[TableCellDetectorConfig] = None):
         """
         Args:
-            min_cell: Минимальный размер ячейки
-            padding: Отступ при проверке на наличие линии между ячейками
-            threshold_line: Порог для определения наличия линии между ячейками
-            hough_threshold: Порог для детектора линий Хафа
-            min_line_length: Минимальная длина линии
-            max_line_gap: Максимальный разрыв в линии
-            line_angle_threshold: Порог угла для разделения горизонтальных/вертикальных линий
+            cfg: Конфигурация детектора ячеек
         """
-        self.min_cell = min_cell
-        self.padding = padding
-        self.threshold_line = threshold_line
-        self.hough_threshold = hough_threshold
-        self.min_line_length = min_line_length
-        self.max_line_gap = max_line_gap
-        self.line_angle_threshold = line_angle_threshold
+        if cfg is None:
+            cfg = TableCellDetectorConfig()
+
+        self.min_cell = cfg.min_cell
+        self.padding = cfg.padding
+        self.threshold_line = cfg.threshold_line
+        self.hough_threshold = cfg.hough_threshold
+        self.min_line_length = cfg.min_line_length
+        self.max_line_gap = cfg.max_line_gap
+        self.line_angle_threshold = cfg.line_angle_threshold
 
     def extract_cells(
         self,

@@ -1,21 +1,44 @@
 import cv2
 import numpy as np
+from typing import Optional
+from vision_core.config import TablePreprocessorConfig
 
 
 class TablePreprocessor:
-    def __init__(self):
-        pass
+    def __init__(self, cfg: Optional[TablePreprocessorConfig] = None):
+        """Предобработчик для таблиц
+
+        Args:
+            cfg: Конфигурация предобработчика таблиц
+        """
+        if cfg is None:
+            cfg = TablePreprocessorConfig()
+
+        self.gaussian_blur_kernel = cfg.gaussian_blur_kernel
+        self.horisontal_kernel_max = cfg.horisontal_kernel_max
+        self.horizontal_morph_kernel_size = cfg.horizontal_morph_kernel_size
+        self.horizontal_min_length = cfg.horizontal_min_length
+        self.horizontal_min_intersections = cfg.horizontal_min_intersections
+        self.vertical_morph_kernel_size = cfg.vertical_morph_kernel_size
+        self.vertical_kernel_max = cfg.vertical_kernel_max
+        self.vertical_min_length = cfg.vertical_min_length
+        self.vertical_min_intersections = cfg.vertical_min_intersections
 
     def create_table_mask(self, image: np.ndarray):
+        """Создание маски таблицы из изображения"""
         processed = self._processing(image)
 
-        h_mask = self._detect_horizontal_lines(processed)
-        v_mask = self._detect_vertical_lines(processed)
+        h_mask = self._detect_horizontal_lines(processed, self.horisontal_kernel_max)
+        v_mask = self._detect_vertical_lines(processed, self.vertical_kernel_max)
         table_mask = self._create_table_mask(h_mask, v_mask)
         return table_mask
 
     def _processing(self, image: np.ndarray):
-        blur = cv2.GaussianBlur(image, (3, 3), 0)
+        blur = cv2.GaussianBlur(
+            image,
+            (self.gaussian_blur_kernel, self.gaussian_blur_kernel),
+            0,
+        )
         binary = cv2.threshold(blur, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
         return binary
 
@@ -25,14 +48,16 @@ class TablePreprocessor:
         cleaned_h_mask = self._clean_mask(
             h_mask,
             intersec,
+            min_length=self.horizontal_min_length,
+            min_intersections=self.horizontal_min_intersections,
             type="horizontal",
-            min_intersections=1,
         )
         cleaned_v_mask = self._clean_mask(
             v_mask,
             intersec,
+            min_length=self.vertical_min_length,
+            min_intersections=self.vertical_min_intersections,
             type="vertical",
-            min_intersections=2,
         )
         cleaned_mask = cv2.add(cleaned_h_mask, cleaned_v_mask)
 
@@ -52,10 +77,10 @@ class TablePreprocessor:
 
         output_mask = np.zeros_like(mask, dtype=np.uint8)
 
-        for lbl in range(
-            1, num_mask_labels
-        ):  # Начинаем с 1, чтобы пропустить фон (метка 0)
+        for lbl in range(1, num_mask_labels):
             length = stats_mask[lbl, cv2.CC_STAT_AREA]
+
+            # Пропускаем слишком короткие линии
             if length < min_length:
                 continue
             # TODO: optimize this part
@@ -97,21 +122,6 @@ class TablePreprocessor:
 
             if crosses >= min_intersections:
                 output_mask[comp_boolean_mask] = 255
-
-            # current_comp_intersections_map_bool = comp_boolean_mask & (intersec > 0)
-
-            # num_intersection_pixels = np.sum(current_comp_intersections_map_bool)
-
-            # if not np.any(current_comp_intersections_map_bool):
-            #     crosses = 0
-            # else:
-            #     num_intersection_blobs, _ = cv2.connectedComponents(
-            #         current_comp_intersections_map_bool.astype(np.uint8), connectivity=8
-            #     )
-            #     crosses = num_intersection_blobs - 1
-
-            # if crosses > min_intersections:
-            #     output_mask[comp_boolean_mask] = 255
 
         return output_mask
 
