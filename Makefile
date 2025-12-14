@@ -27,6 +27,9 @@ venv:
 test:
 	uv run pytest tests -vv --show-capture=all
 
+metrics:
+	radon mi -s vision_core/ app/
+
 install: generate_dot_env venv
 	pip install uv --break-system-packages
 	uv pip install -e ".[dev]"
