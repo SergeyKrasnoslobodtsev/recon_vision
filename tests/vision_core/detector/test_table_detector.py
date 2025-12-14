@@ -56,3 +56,56 @@ class TestTableDetector:
                     position="top",
                 )
             debug_image.save(output_dir / f"detected_tables_{test_file.stem}.png")
+
+    def test_extract_tables(
+        self,
+        pdf_path: Path,
+        output_dir: Path,
+        pdf_loader_single_page: np.ndarray,
+        preprocessor_img: ImagePreprocessor,
+        table_detector: TableDetector,
+        drawer_bbox_and_label,
+    ):
+        """Тестирует детекцию таблиц на изображении"""
+
+        if not pdf_path.exists():
+            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+
+        pdf_files = list(pdf_path.glob("*.pdf"))
+
+        if not pdf_files:
+            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
+
+        for test_file in pdf_files[:1]:
+            logger.info(f"Тестирование на файле: {test_file.name}")
+            pdf_bytes = test_file.read_bytes()
+
+            original = pdf_loader_single_page(pdf_bytes)
+
+            processed_img = preprocessor_img.process(original)
+
+            tables = table_detector.detect_tables(processed_img)
+
+            debug_image = original.copy()
+
+            if not tables:
+                logger.warning(f"Таблицы не найдены в файле: {test_file.name}")
+                # debug_image.save(output_dir / f"no_tables_{test_file.stem}.png")
+            else:
+                for i, table in enumerate(tables):
+                    debug_image = drawer_bbox_and_label(
+                        debug_image,
+                        table.bbox,
+                        label=f"Table {i + 1}",
+                        color="blue",
+                        position="top",
+                    )
+                    for cell in table.cells:
+                        debug_image = drawer_bbox_and_label(
+                            debug_image,
+                            cell.bbox,
+                            label=f"R{cell.row}C{cell.col}S{cell.rowspan}x{cell.colspan}",
+                            color="darkgreen",
+                            position="bottom",
+                        )
+                debug_image.save(output_dir / f"detected_tables_{test_file.stem}.png")

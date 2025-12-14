@@ -22,9 +22,7 @@ class TestCellDetector:
         pdf_loader_single_page: np.ndarray,
         preprocessor_img: ImagePreprocessor,
         preprocessor_table: TablePreprocessor,
-        table_detector: TableDetector,
         cell_detector: TableCellDetector,
-        drawer_bbox_and_label,
     ):
         """Тестирует детекцию таблиц на изображении"""
 
