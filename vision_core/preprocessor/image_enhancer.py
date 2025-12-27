@@ -30,10 +30,6 @@ class ImageEnhancer:
         if metrics.has_colored_bg:
             logger.debug("Удаление цветного фона из изображения")
             # result = self._remove_colored_background(result)
-
-        # Нормализация (всегда применяем)
-        result = self._normalize(result)
-
         # Исправление наклона
         if metrics.has_skew:
             logger.debug(f"Исправление наклона на {metrics.skew_angle:.2f} градусов")
@@ -47,11 +43,11 @@ class ImageEnhancer:
         # Повышение резкости
         if metrics.has_blur:
             if metrics.has_blur and metrics.has_noise:
-                result = cv2.fastNlMeansDenoising(result, h=15)
+                result = cv2.bilateralFilter(result, d=3, sigmaColor=75, sigmaSpace=75)
                 logger.debug(
                     f"Удаление шума с помощью Non-Local Means Denoising {metrics.noise_ratio:.2f}"
                 )
-                result = self._sharpen(result)
+                # result = self._sharpen(result)
             else:
                 logger.debug(f"Повышение резкости изображения {metrics.sharpness:.2f}")
                 result = self._sharpen(result)
@@ -62,22 +58,22 @@ class ImageEnhancer:
                 f"Улучшение контраста изображения {metrics.contrast_level:.2f}"
             )
             result = self._enhance_contrast(result)
-
+        result = self._normalize(result)
         logger.info("Процесс адаптивной обработки изображения завершен")
 
         return result
 
     def _normalize(self, gray: np.ndarray) -> np.ndarray:
         """Нормализация гистограммы"""
-        norm = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
+        # norm = cv2.normalize(gray, None, 0, 255, cv2.NORM_MINMAX)
         return cv2.adaptiveThreshold(
-            norm, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 11
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 35, 11
         )
 
     def _remove_noise_contours(self, gray: np.ndarray) -> np.ndarray:
         """Удаление зерна через анализ контуров"""
-        noise_removed = cv2.fastNlMeansDenoising(gray, h=15)
-        blured = cv2.medianBlur(noise_removed, 3)
+        # noise_removed = cv2.fastNlMeansDenoising(gray, h=15)
+        blured = cv2.medianBlur(gray, 3)
         return blured
 
     def _enhance_contrast(self, gray: np.ndarray) -> np.ndarray:
