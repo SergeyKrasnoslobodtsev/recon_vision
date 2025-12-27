@@ -28,9 +28,7 @@ class PageAnalizer:
         # Предобработка изображения
         processed_image = self.image_preprocessor.process(image)
 
-        # Создание маски таблиц
-        table_mask = self.table_preprocessor.create_table_mask(processed_image)
-        table_bboxes = self.table_detector.extract_raw_tables(table_mask)
+        table_bboxes = self.table_detector.detect_tables(processed_image)
 
         # Создание маски абзацев
         paragraph_mask = self.paragraph_preprocessor.create_paragraph_mask(
