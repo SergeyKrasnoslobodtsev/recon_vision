@@ -39,7 +39,7 @@ class TablePreprocessorConfig:
 
 
 @dataclass
-class TableRecognitionConfig:
+class VisionCoreConfig:
     """Общая конфигурация для распознавания таблиц"""
 
     detector: TableDetectorConfig = field(default_factory=TableDetectorConfig)
@@ -51,7 +51,7 @@ class TableRecognitionConfig:
     )
 
     @classmethod
-    def from_dict(cls, config_dict: dict) -> "TableRecognitionConfig":
+    def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":
         """Создание из словаря (для загрузки из JSON/YAML)"""
         return cls(
             detector=TableDetectorConfig(**config_dict.get("detector", {})),

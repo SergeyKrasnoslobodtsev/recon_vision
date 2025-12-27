@@ -5,20 +5,20 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.table import Table
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.config import TableRecognitionConfig
+from vision_core.config import VisionCoreConfig
 from loguru import logger
 
 
 class TableDetector:
     """Детектор таблиц на изображении"""
 
-    def __init__(self, config: Optional[TableRecognitionConfig] = None):
+    def __init__(self, config: Optional[VisionCoreConfig] = None):
         """
         Args:
             config: Конфигурация для всех компонентов распознавания таблиц
         """
         if config is None:
-            config = TableRecognitionConfig()
+            config = VisionCoreConfig()
 
         self.config = config
         cfg = config.detector
