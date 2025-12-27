@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from .bbox import BBox
 from typing import Union, Optional
-from datetime import datetime
 
 
 class Cell(BaseModel):
@@ -9,9 +8,11 @@ class Cell(BaseModel):
     col: int
     colspan: int = 1
     rowspan: int = 1
-    value: Optional[Union[str, int, float, datetime]] = None
+    value: Optional[Union[str]] = None
     bbox: BBox
-    blobs: list[BBox] = []
+    from pydantic import Field
+
+    blobs: list[BBox] = Field(default_factory=list)
 
     @property
     def area(self) -> float:
