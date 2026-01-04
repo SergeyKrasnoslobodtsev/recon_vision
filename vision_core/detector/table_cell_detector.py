@@ -22,6 +22,7 @@ class TableCellDetector:
         self.min_cell = cfg.min_cell
         self.padding = cfg.padding
         self.threshold_line = cfg.threshold_line
+        self.coverage_thr = cfg.coverage_thr
         self.hough_threshold = cfg.hough_threshold
         self.min_line_length = cfg.min_line_length
         self.max_line_gap = cfg.max_line_gap
@@ -30,25 +31,29 @@ class TableCellDetector:
     def extract_cells(
         self,
         table_mask: np.ndarray,
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
         merge_mode: Optional[str] = None,
     ) -> list[Cell]:
-        """
-        Извлекает ячейки из таблицы.
+        """Извлекает ячейки из маски сырых таблиц. Под сырыми подразумевается
+           все квадраты, попавшие под условия.
 
         Args:
-            merge_mode: Режим объединения ячеек:
+            table_mask (np.ndarray): маска таблицы
+            table_bbox (tuple[int, int, int, int]): ограничивающий прямоугольник таблицы
+            merge_mode (Optional[str], optional): Режим объединения ячеек:
                 - None: без объединения
                 - "cols": объединение по столбцам
                 - "rows": объединение по строкам
                 - "all": полное объединение
-        """
-        roi_mask = table_bbox.roi(table_mask)
 
-        y_coords, x_coords = self._build_grid_coordinates_from_mask(roi_mask)
+        Returns:
+            list[Cell]: Список ячеек структурой Cell
+        """
+
+        y_coords, x_coords = self._build_grid_coordinates_from_mask(table_mask)
 
         return self._extract_cells_by_mode(
-            roi_mask, x_coords, y_coords, table_bbox, merge_mode
+            table_mask, x_coords, y_coords, table_bbox, merge_mode
         )
 
     def _build_grid_coordinates_from_mask(
@@ -110,7 +115,7 @@ class TableCellDetector:
         x_coords = sorted(set(int(x) for x in x_coords))
         y_coords = sorted(set(int(y) for y in y_coords))
 
-        # Фильтруем слишком близкие координаты (лучше опираться на min_cell, чем на константу 10)
+        # Фильтруем слишком близкие координаты
         min_dist = max(2, int(self.min_cell))
         x_coords = self._filter_close_coordinates(x_coords, min_dist)
         y_coords = self._filter_close_coordinates(y_coords, min_dist)
@@ -136,7 +141,7 @@ class TableCellDetector:
         roi_mask: np.ndarray,
         x_coords: list[int],
         y_coords: list[int],
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
         merge_mode: Optional[str],
     ) -> list[Cell]:
         """Выбирает метод извлечения ячеек в зависимости от режима"""
@@ -158,7 +163,7 @@ class TableCellDetector:
         self,
         x_coords: list[int],
         y_coords: list[int],
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
     ) -> list[Cell]:
         """Извлекает базовые ячейки без объединения"""
         cells = []
@@ -166,10 +171,10 @@ class TableCellDetector:
         for i in range(len(y_coords) - 1):
             for j in range(len(x_coords) - 1):
                 bbox = BBox(
-                    x_min=x_coords[j] + table_bbox.x_min,
-                    y_min=y_coords[i] + table_bbox.y_min,
-                    x_max=x_coords[j + 1] + table_bbox.x_min,
-                    y_max=y_coords[i + 1] + table_bbox.y_min,
+                    x_min=x_coords[j] + table_bbox[0],
+                    y_min=y_coords[i] + table_bbox[1],
+                    x_max=x_coords[j + 1] + table_bbox[0],
+                    y_max=y_coords[i + 1] + table_bbox[1],
                 )
 
                 cells.append(Cell(row=i, col=j, bbox=bbox, colspan=1, rowspan=1))
@@ -182,7 +187,28 @@ class TableCellDetector:
         x_coords: list[int],
         y_coords: list[int],
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Строит матрицы наличия вертикальных и горизонтальных границ по факту линии НА МАСКЕ."""
+        """Строит матрицы вертикальных и горизонтальных разделителей между ячейками таблицы.
+        Метод анализирует бинарную маску с линиями таблицы и определяет, где присутствуют
+        физические границы между ячейками. Использует морфологические операции для выделения
+        горизонтальных и вертикальных линий, а затем проверяет их наличие в окрестности
+        заданных координат сетки.
+
+        Args:
+            mask (np.ndarray): Бинарная маска изображения с линиями таблицы (H x W).
+            x_coords (list[int]): Список x-координат вертикальных линий сетки таблицы,
+                отсортированный по возрастанию. Определяет границы столбцов.
+            y_coords (list[int]): Список y-координат горизонтальных линий сетки таблицы,
+                отсортированный по возрастанию. Определяет границы строк.
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Кортеж из двух булевых матриц:
+            - vertical_gaps: Матрица размером (n_rows, n_cols-1), где vertical_gaps[i, j]=True
+                означает наличие вертикальной границы между столбцами j и j+1 в строке i.
+            - horizontal_gaps: Матрица размером (n_rows-1, n_cols), где horizontal_gaps[i, j]=True
+                означает наличие горизонтальной границы между строками i и i+1 в столбце j.
+            Если сетка пустая (n_rows<=0 или n_cols<=0), возвращаются пустые матрицы (0, 0).
+        """
+
         n_rows = len(y_coords) - 1
         n_cols = len(x_coords) - 1
 
@@ -195,7 +221,7 @@ class TableCellDetector:
         h, w = mask.shape[:2]
         bin_img = (mask > 0).astype(np.uint8) * 255
 
-        # Оценим "типичный" размер ячейки из сетки, чтобы ядра были адекватными для текущей таблицы
+        # Оценим типичный размер ячейки
         dx = np.diff(np.array(x_coords, dtype=np.int32))
         dy = np.diff(np.array(y_coords, dtype=np.int32))
         med_dx = int(np.median(dx[dx > 0])) if np.any(dx > 0) else max(10, w // 20)
@@ -205,7 +231,7 @@ class TableCellDetector:
         k_h = max(10, int(0.6 * med_dx))
         k_v = max(10, int(0.6 * med_dy))
 
-        # Сначала слегка "соединяем" разрывы
+        # Сначала слегка соединяем разрывы
         close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
         closed = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, close_kernel, iterations=1)
 
@@ -219,10 +245,7 @@ class TableCellDetector:
         # Допуск вокруг координаты линии
         tol = max(2, int(self.padding), int(self.threshold_line))
 
-        # Порог покрытия: доля строк/колонок внутри сегмента, где линия присутствует
-        coverage_thr = 0.8
-
-        # Вертикальные границы (между столбцами): смотрим ТОЛЬКО v_mask
+        # Вертикальные границы
         for row in range(n_rows):
             y1 = max(int(y_coords[row]), 0)
             y2 = min(int(y_coords[row + 1]), h)
@@ -239,10 +262,13 @@ class TableCellDetector:
                 roi = v_mask[y1:y2, x1:x2] > 0
                 rows_with_line = np.any(roi, axis=1)
 
-                if rows_with_line.size and float(rows_with_line.mean()) >= coverage_thr:
+                if (
+                    rows_with_line.size
+                    and float(rows_with_line.mean()) >= self.coverage_thr
+                ):
                     vertical_gaps[row, col] = True
 
-        # Горизонтальные границы (между строками): смотрим ТОЛЬКО h_mask
+        # Горизонтальные границы
         for row in range(n_rows - 1):
             y_pos = int(y_coords[row + 1])
             y1 = max(y_pos - tol, 0)
@@ -259,7 +285,10 @@ class TableCellDetector:
                 roi = h_mask[y1:y2, x1:x2] > 0
                 cols_with_line = np.any(roi, axis=0)
 
-                if cols_with_line.size and float(cols_with_line.mean()) >= coverage_thr:
+                if (
+                    cols_with_line.size
+                    and float(cols_with_line.mean()) >= self.coverage_thr
+                ):
                     horizontal_gaps[row, col] = True
 
         return vertical_gaps, horizontal_gaps
@@ -268,7 +297,7 @@ class TableCellDetector:
         self,
         x_coords: list[int],
         y_coords: list[int],
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
         vertical_gaps: np.ndarray,
     ) -> list[Cell]:
         """Извлекает ячейки с объединением по столбцам"""
@@ -288,10 +317,10 @@ class TableCellDetector:
                     colspan += 1
 
                 bbox = BBox(
-                    x_min=x_coords[col] + table_bbox.x_min,
-                    y_min=y_coords[row] + table_bbox.y_min,
-                    x_max=x_coords[col + colspan] + table_bbox.x_min,
-                    y_max=y_coords[row + 1] + table_bbox.y_min,
+                    x_min=x_coords[col] + table_bbox[0],
+                    y_min=y_coords[row] + table_bbox[1],
+                    x_max=x_coords[col + colspan] + table_bbox[0],
+                    y_max=y_coords[row + 1] + table_bbox[1],
                 )
 
                 cells.append(
@@ -306,7 +335,7 @@ class TableCellDetector:
         self,
         x_coords: list[int],
         y_coords: list[int],
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
         horizontal_gaps: np.ndarray,
     ) -> list[Cell]:
         """Извлекает ячейки с объединением по строкам"""
@@ -326,10 +355,10 @@ class TableCellDetector:
                     rowspan += 1
 
                 bbox = BBox(
-                    x_min=x_coords[col] + table_bbox.x_min,
-                    y_min=y_coords[row] + table_bbox.y_min,
-                    x_max=x_coords[col + 1] + table_bbox.x_min,
-                    y_max=y_coords[row + rowspan] + table_bbox.y_min,
+                    x_min=x_coords[col] + table_bbox[0],
+                    y_min=y_coords[row] + table_bbox[1],
+                    x_max=x_coords[col + 1] + table_bbox[0],
+                    y_max=y_coords[row + rowspan] + table_bbox[1],
                 )
 
                 cells.append(
@@ -344,7 +373,7 @@ class TableCellDetector:
         self,
         x_coords: list[int],
         y_coords: list[int],
-        table_bbox: BBox,
+        table_bbox: tuple[int, int, int, int],
         vertical_gaps: np.ndarray,
         horizontal_gaps: np.ndarray,
     ) -> list[Cell]:

@@ -42,10 +42,10 @@ class TableDetector:
 
         for idx, bbox in enumerate(table_bboxes):
             # Детектируем ячейки внутри таблицы
-
+            roi_mask = bbox.roi(self._table_mask)
             cells = self.table_cell_detector.extract_cells(
-                self._table_mask,
-                bbox,
+                roi_mask,
+                bbox.to_tuple(),
                 merge_mode=self.mode_merge_cells,
             )
             table = Table(
