@@ -75,7 +75,6 @@ class TableCellDetector:
         x_profile = bin_img.mean(axis=0)  # shape: (w,)
         y_profile = bin_img.mean(axis=1)  # shape: (h,)
 
-        # Адаптивные пороги: не фиксированные магические числа
         x_thr = max(0.003, 0.25 * float(x_profile.max()))
         y_thr = max(0.003, 0.25 * float(y_profile.max()))
 
