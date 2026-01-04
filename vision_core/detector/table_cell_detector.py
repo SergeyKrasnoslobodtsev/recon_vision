@@ -5,11 +5,9 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 from vision_core.config import TableCellDetectorConfig
 
-from loguru import logger
-
 
 class TableCellDetector:
-    """Извлекатель ячеек из таблицы"""
+    """Детектор ячеек в таблице"""
 
     def __init__(self, cfg: Optional[TableCellDetectorConfig] = None):
         """
@@ -23,10 +21,6 @@ class TableCellDetector:
         self.padding = cfg.padding
         self.threshold_line = cfg.threshold_line
         self.coverage_thr = cfg.coverage_thr
-        self.hough_threshold = cfg.hough_threshold
-        self.min_line_length = cfg.min_line_length
-        self.max_line_gap = cfg.max_line_gap
-        self.line_angle_threshold = cfg.line_angle_threshold
 
     def extract_cells(
         self,
@@ -241,7 +235,7 @@ class TableCellDetector:
         h_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, h_kernel, iterations=1)
         v_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, v_kernel, iterations=1)
 
-        # Допуск вокруг координаты линии
+        # Допуск вокруг координаты линии для определения границ
         tol = max(2, int(self.padding), int(self.threshold_line))
 
         # Вертикальные границы
