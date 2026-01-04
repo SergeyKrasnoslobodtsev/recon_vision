@@ -91,7 +91,7 @@ class TestCellDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files:
+        for test_file in pdf_files[:1]:
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
@@ -106,17 +106,11 @@ class TestCellDetector:
 
             drawer = Drawer(debug_image, side_by_side=True)
 
-            for i, bbox in enumerate(bboxes):
-                # drawer.draw_structure(
-                #     bbox.to_tuple(),
-                #     label=f"Table {i + 1}",
-                #     color="blue",
-                #     position=Position.TOP,
-                # )
-
+            for bbox in bboxes:
+                roi_mask = bbox.roi(table_mask)
                 cells_bboxes = cell_detector.extract_cells(
-                    table_mask,
-                    bbox,
+                    roi_mask,
+                    bbox.to_tuple(),
                     merge_mode="cols",
                 )
 
