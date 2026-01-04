@@ -109,7 +109,7 @@ def pdf_loader_single_page():
 
     def _loader(pdf_bytes):
         with PDFLoader(pdf_bytes) as loader:
-            return loader.get_page_image(0, dpi=300)
+            return loader.get_page_image(0, dpi=200)
 
     return _loader
 
@@ -176,7 +176,10 @@ def drawer_bbox_and_label():
             pil = Image.fromarray(image)
         else:
             pil = image
-        draw = ImageDraw.Draw(pil)
+
+        new_image = Image.new(pil.mode, pil.size, (255, 255, 255))
+
+        draw = ImageDraw.Draw(new_image)
         fnt = ImageFont.load_default(size=24)
         pt1 = (int(bbox.x_min), int(bbox.y_min))
         pt2 = (int(bbox.x_max), int(bbox.y_max))
@@ -196,6 +199,10 @@ def drawer_bbox_and_label():
             coords = (pt1[0] + 5, pt2[1] - 30)
             _label(coords, label, fnt, color)
 
-        return pil
+        combinesd_image = Image.new("RGB", (pil.width * 2, pil.height))
+        combinesd_image.paste(pil, (0, 0))
+        combinesd_image.paste(new_image, (pil.width, 0))
+
+        return combinesd_image
 
     return _drawer_bbox_and_label

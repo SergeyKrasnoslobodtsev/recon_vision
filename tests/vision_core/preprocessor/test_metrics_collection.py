@@ -26,7 +26,7 @@ def test_collect_metrics_from_test_samples(
     analyzer = ImageAnalyzer()
     results = []
 
-    for pdf_path in pdf_files[:1]:
+    for pdf_path in pdf_files:
         logger.info(f"Обработка: {pdf_path.name}")
 
         pdf_bytes = pdf_path.read_bytes()
@@ -54,11 +54,11 @@ def test_collect_metrics_from_test_samples(
     df = pd.DataFrame(results)
 
     # Сохраняем в CSV
-    # output_path = Path("./examples/output/metrics_analysis.csv")
-    # output_path.parent.mkdir(parents=True, exist_ok=True)
-    # df.to_csv(output_path, index=False)
+    output_path = Path("./examples/output/metrics_analysis.csv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(output_path, index=False)
 
-    # logger.success(f"Метрики сохранены: {output_path}")
+    logger.success(f"Метрики сохранены: {output_path}")
 
     # Выводим сводку
     logger.info("\nСводка по метрикам:")

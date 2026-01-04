@@ -6,13 +6,13 @@ from .bbox import BBox
 class ParagraphType(enum.Enum):
     HEADER = 0
     FOOTER = 1
-    NONE = 2
+    TEXT = 2
 
 
 class Paragraph(BaseModel):
     id: str
     text: str
-    type: ParagraphType = ParagraphType.NONE
+    type: ParagraphType = ParagraphType.TEXT
     bbox: BBox
     blobs: list[BBox] = []
 

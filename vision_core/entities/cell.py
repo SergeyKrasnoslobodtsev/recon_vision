@@ -62,7 +62,7 @@ class Cell(BaseModel):
         """Площадь пересечения двух ячеек"""
         return self.bbox.intersect(other.bbox)
 
-    def get_largest_free_space(self, padding: float = 1.0) -> BBox | None:
+    def get_largest_free_space(self, padding: float = 1.0) -> Optional[BBox]:
         """Возвращает наибольшее свободное пространство в ячейке"""
         if not self.blobs:
             return self.bbox

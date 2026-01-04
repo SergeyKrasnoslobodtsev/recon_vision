@@ -37,12 +37,12 @@ class CacheInDisk:
         logger.info(f"Создан процесс {process_id}")
         return process_id
 
-    async def get_structure(self, process_id: str) -> dict | None:
+    async def get_structure(self, process_id: str):
         """Получает структуру данных процесса по его идентификатору"""
         data = self.cache.get(process_id)
         return data.structure if isinstance(data, ProcessData) else None
 
-    async def get_pdf(self, process_id: str) -> bytes | None:
+    async def get_pdf(self, process_id: str):
         """Получает PDF-файл процесса по его идентификатору"""
         data = self.cache.get(process_id)
         return data.pdf_bytes if isinstance(data, ProcessData) else None

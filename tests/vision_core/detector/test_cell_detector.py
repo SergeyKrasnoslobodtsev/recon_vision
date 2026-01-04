@@ -5,7 +5,7 @@ from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 from vision_core.detector.table_detector import TableDetector
 from vision_core.detector.table_cell_detector import TableCellDetector
-
+from vision_core.utils.drawer import Drawer, Position
 import numpy as np
 
 
@@ -34,7 +34,7 @@ class TestCellDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files[:1]:
+        for test_file in pdf_files[11:12]:
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
@@ -50,22 +50,23 @@ class TestCellDetector:
             from PIL import Image, ImageDraw
 
             debug_image = Image.fromarray(debug_image)
-            Image.fromarray(table_mask).show()
+            Image.fromarray(table_mask).save(
+                output_dir / f"table_mask_{test_file.stem}.png"
+            )
+            draw = ImageDraw.Draw(debug_image)
 
             for line in v_lines:
-                draw = ImageDraw.Draw(debug_image)
                 draw.line(
                     [(line[0], line[1]), (line[2], line[3])],
                     fill="red",
-                    width=2,
+                    width=1,
                 )
 
             for line in h_lines:
-                draw = ImageDraw.Draw(debug_image)
                 draw.line(
                     [(line[0], line[1]), (line[2], line[3])],
                     fill="blue",
-                    width=2,
+                    width=1,
                 )
 
             debug_image.save(output_dir / f"detected_lines_{test_file.stem}.png")
@@ -79,7 +80,6 @@ class TestCellDetector:
         preprocessor_table: TablePreprocessor,
         table_detector: TableDetector,
         cell_detector: TableCellDetector,
-        drawer_bbox_and_label,
     ):
         """Тестирует детекцию таблиц на изображении"""
 
@@ -104,14 +104,15 @@ class TestCellDetector:
 
             debug_image = original.copy()
 
+            drawer = Drawer(debug_image, side_by_side=True)
+
             for i, bbox in enumerate(bboxes):
-                debug_image = drawer_bbox_and_label(
-                    debug_image,
-                    bbox,
-                    label=f"Table {i + 1}",
-                    color="blue",
-                    position="top",
-                )
+                # drawer.draw_structure(
+                #     bbox.to_tuple(),
+                #     label=f"Table {i + 1}",
+                #     color="blue",
+                #     position=Position.TOP,
+                # )
 
                 cells_bboxes = cell_detector.extract_cells(
                     table_mask,
@@ -120,12 +121,11 @@ class TestCellDetector:
                 )
 
                 for cell_bbox in cells_bboxes:
-                    debug_image = drawer_bbox_and_label(
-                        debug_image,
-                        cell_bbox.bbox,
+                    drawer.draw_structure(
+                        cell_bbox.bbox.to_tuple(),
                         label=f"R{cell_bbox.row}C{cell_bbox.col}S{cell_bbox.colspan}",
                         color="darkgreen",
-                        position="bottom",
+                        position=Position.TOP,
                     )
 
-            debug_image.save(output_dir / f"detected_cells_{test_file.stem}.png")
+            drawer.save(output_dir / f"detected_cells_{test_file.stem}.png")

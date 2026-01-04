@@ -71,7 +71,7 @@ class Table(BaseModel):
     def _cell_index(self) -> dict[tuple[int, int], Cell]:
         return {(c.row, c.col): c for c in self.cells}
 
-    def get_cell(self, row: int, col: int) -> Cell | None:
+    def get_cell(self, row: int, col: int):
         """Получить ячейку по номеру строки и столбца"""
         return self._cell_index.get((row, col))
 

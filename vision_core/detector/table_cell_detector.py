@@ -5,6 +5,8 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 from vision_core.config import TableCellDetectorConfig
 
+from loguru import logger
+
 
 class TableCellDetector:
     """Извлекатель ячеек из таблицы"""
@@ -43,132 +45,75 @@ class TableCellDetector:
         """
         roi_mask = table_bbox.roi(table_mask)
 
-        # 1. Находим линии
-        h_lines, v_lines = self._detect_lines(roi_mask)
+        y_coords, x_coords = self._build_grid_coordinates_from_mask(roi_mask)
 
-        # 2. Группируем близкие линии
-        h_lines = self._group_lines(h_lines, axis="y")
-        v_lines = self._group_lines(v_lines, axis="x")
-
-        # 3. Получаем координаты сетки
-        y_coords, x_coords = self._build_grid_coordinates(
-            h_lines, v_lines, roi_mask.shape
-        )
-
-        # 4. Извлекаем ячейки в зависимости от режима
         return self._extract_cells_by_mode(
             roi_mask, x_coords, y_coords, table_bbox, merge_mode
         )
 
-    def _detect_lines(self, mask: np.ndarray) -> tuple[list, list]:
-        """Обнаруживает горизонтальные и вертикальные линии на маске"""
-        edges = cv2.Canny(mask, 50, 150, apertureSize=3)
-
-        lines = cv2.HoughLinesP(
-            edges,
-            1,
-            np.pi / 180,
-            threshold=self.hough_threshold,
-            minLineLength=self.min_line_length,
-            maxLineGap=self.max_line_gap,
-        )
-
-        if lines is None:
-            return [], []
-
-        h_lines, v_lines = [], []
-
-        for line in lines:
-            x1, y1, x2, y2 = line[0]
-            angle = np.abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
-
-            # Корректное определение горизонтальных/вертикальных линий
-            if (
-                angle <= self.line_angle_threshold
-                or angle >= 180 - self.line_angle_threshold
-            ):
-                h_lines.append((x1, y1, x2, y2))
-            else:
-                v_lines.append((x1, y1, x2, y2))
-
-        return h_lines, v_lines
-
-    def _group_lines(
+    def _build_grid_coordinates_from_mask(
         self,
-        lines: list[tuple[float, float, float, float]],
-        axis: str,
-    ) -> list[tuple[float, float, float, float]]:
-        """Группирует близкие линии по указанной оси"""
-        if not lines:
-            return []
-
-        # Определяем ключ сортировки в зависимости от оси
-        if axis == "y":
-            lines.sort(key=lambda line: (line[1] + line[3]) / 2)
-            positions = [(line[1] + line[3]) / 2 for line in lines]
-        else:  # 'x'
-            lines.sort(key=lambda line: (line[0] + line[2]) / 2)
-            positions = [(line[0] + line[2]) / 2 for line in lines]
-
-        # Группируем линии
-        groups = []
-        current_group = [lines[0]]
-
-        for i in range(1, len(lines)):
-            if abs(positions[i] - positions[i - 1]) <= self.threshold_line:
-                current_group.append(lines[i])
-            else:
-                groups.append(current_group)
-                current_group = [lines[i]]
-
-        if current_group:
-            groups.append(current_group)
-
-        # Усредняем линии в группах
-        return self._average_lines_in_groups(groups, axis)
-
-    def _average_lines_in_groups(
-        self,
-        groups: list[list[tuple]],
-        axis: str,
-    ) -> list[tuple]:
-        """Усредняет линии в группах"""
-        result = []
-
-        for group in groups:
-            if axis == "y":
-                avg_y = np.mean([(line[1] + line[3]) / 2 for line in group])
-                min_x = min(min(line[0], line[2]) for line in group)
-                max_x = max(max(line[0], line[2]) for line in group)
-                result.append((min_x, avg_y, max_x, avg_y))
-            else:  # 'x'
-                avg_x = np.mean([(line[0] + line[2]) / 2 for line in group])
-                min_y = min(min(line[1], line[3]) for line in group)
-                max_y = max(max(line[1], line[3]) for line in group)
-                result.append((avg_x, min_y, avg_x, max_y))
-
-        return result
-
-    def _build_grid_coordinates(
-        self,
-        h_lines: list,
-        v_lines: list,
-        roi_shape: tuple[int, int],
+        roi_mask: np.ndarray,
     ) -> tuple[list[int], list[int]]:
-        """Строит координаты сетки ячеек"""
-        # Извлекаем Y-координаты из горизонтальных линий
-        y_coords = sorted(set(int(line[1]) for line in h_lines))
-        x_coords = sorted(set(int(line[0]) for line in v_lines))
+        """
+        Строит координаты сетки напрямую из бинарной маски линий.
+        Идея: берём профили (доля белых пикселей) по X и по Y, находим "полосы" линий,
+        схлопываем в центры и фильтруем близкие координаты.
+        """
+        if roi_mask.ndim != 2:
+            raise ValueError("roi_mask must be 2D (single-channel)")
 
-        # Добавляем границы ROI если нет крайних линий
-        if not y_coords or roi_shape[0] - 1 > y_coords[-1]:
-            y_coords.append(roi_shape[0] - 1)
-        if not x_coords or roi_shape[1] - 1 > x_coords[-1]:
-            x_coords.append(roi_shape[1] - 1)
+        h, w = roi_mask.shape[:2]
+        bin_img = (roi_mask > 0).astype(np.uint8)
 
-        # Фильтруем слишком близкие координаты
-        y_coords = self._filter_close_coordinates(y_coords, self.min_cell)
-        x_coords = self._filter_close_coordinates(x_coords, self.min_cell)
+        # Профили: сколько белого в каждой колонке/строке
+        x_profile = bin_img.mean(axis=0)  # shape: (w,)
+        y_profile = bin_img.mean(axis=1)  # shape: (h,)
+
+        # Адаптивные пороги: не фиксированные магические числа
+        x_thr = max(0.003, 0.25 * float(x_profile.max()))
+        y_thr = max(0.003, 0.25 * float(y_profile.max()))
+
+        x_idxs = np.where(x_profile >= x_thr)[0]
+        y_idxs = np.where(y_profile >= y_thr)[0]
+
+        def _runs_to_centers(idxs: np.ndarray) -> list[int]:
+            if idxs.size == 0:
+                return []
+            centers: list[int] = []
+            start = int(idxs[0])
+            prev = int(idxs[0])
+            for v in idxs[1:]:
+                v = int(v)
+                if v == prev + 1:
+                    prev = v
+                else:
+                    centers.append((start + prev) // 2)
+                    start = prev = v
+            centers.append((start + prev) // 2)
+            return centers
+
+        x_coords = _runs_to_centers(x_idxs)
+        y_coords = _runs_to_centers(y_idxs)
+
+        # Границы ROI (чтобы сетка была замкнутой даже если крайняя линия не попала в профиль)
+        if 0 not in x_coords:
+            x_coords = [0] + x_coords
+        if (w - 1) not in x_coords:
+            x_coords = x_coords + [w - 1]
+
+        if 0 not in y_coords:
+            y_coords = [0] + y_coords
+        if (h - 1) not in y_coords:
+            y_coords = y_coords + [h - 1]
+
+        x_coords = sorted(set(int(x) for x in x_coords))
+        y_coords = sorted(set(int(y) for y in y_coords))
+
+        # Фильтруем слишком близкие координаты (лучше опираться на min_cell, чем на константу 10)
+        min_dist = max(2, int(self.min_cell))
+        x_coords = self._filter_close_coordinates(x_coords, min_dist)
+        y_coords = self._filter_close_coordinates(y_coords, min_dist)
 
         return y_coords, x_coords
 
@@ -198,7 +143,6 @@ class TableCellDetector:
         if merge_mode is None:
             return self._extract_base_cells(x_coords, y_coords, table_bbox)
 
-        # Строим матрицу границ один раз для всех режимов
         v_gaps, h_gaps = self._build_gap_matrices(roi_mask, x_coords, y_coords)
 
         if merge_mode == "cols":
@@ -238,45 +182,85 @@ class TableCellDetector:
         x_coords: list[int],
         y_coords: list[int],
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Строит матрицы наличия вертикальных и горизонтальных границ"""
+        """Строит матрицы наличия вертикальных и горизонтальных границ по факту линии НА МАСКЕ."""
         n_rows = len(y_coords) - 1
         n_cols = len(x_coords) - 1
 
-        # Матрицы: True если есть граница между ячейками
-        vertical_gaps = np.zeros((n_rows, n_cols - 1), dtype=bool)
-        horizontal_gaps = np.zeros((n_rows - 1, n_cols), dtype=bool)
+        if n_rows <= 0 or n_cols <= 0:
+            return np.zeros((0, 0), dtype=bool), np.zeros((0, 0), dtype=bool)
 
-        # Заполняем матрицу вертикальных границ
+        vertical_gaps = np.zeros((n_rows, max(0, n_cols - 1)), dtype=bool)
+        horizontal_gaps = np.zeros((max(0, n_rows - 1), n_cols), dtype=bool)
+
+        h, w = mask.shape[:2]
+        bin_img = (mask > 0).astype(np.uint8) * 255
+
+        # Оценим "типичный" размер ячейки из сетки, чтобы ядра были адекватными для текущей таблицы
+        dx = np.diff(np.array(x_coords, dtype=np.int32))
+        dy = np.diff(np.array(y_coords, dtype=np.int32))
+        med_dx = int(np.median(dx[dx > 0])) if np.any(dx > 0) else max(10, w // 20)
+        med_dy = int(np.median(dy[dy > 0])) if np.any(dy > 0) else max(10, h // 20)
+
+        # Ядра для выделения ориентированных линий
+        k_h = max(10, int(0.6 * med_dx))
+        k_v = max(10, int(0.6 * med_dy))
+
+        # Сначала слегка "соединяем" разрывы
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+        closed = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+
+        # Затем выделяем горизонтали/вертикали
+        h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_h, 1))
+        v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, k_v))
+
+        h_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, h_kernel, iterations=1)
+        v_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, v_kernel, iterations=1)
+
+        # Допуск вокруг координаты линии
+        tol = max(2, int(self.padding), int(self.threshold_line))
+
+        # Порог покрытия: доля строк/колонок внутри сегмента, где линия присутствует
+        coverage_thr = 0.8
+
+        # Вертикальные границы (между столбцами): смотрим ТОЛЬКО v_mask
         for row in range(n_rows):
+            y1 = max(int(y_coords[row]), 0)
+            y2 = min(int(y_coords[row + 1]), h)
+            if y2 <= y1:
+                continue
+
             for col in range(n_cols - 1):
-                x_pos = x_coords[col + 1]
-                y_min = max(y_coords[row] + self.padding, 0)
-                y_max = min(y_coords[row + 1] - self.padding, mask.shape[0])
-                x_min = max(x_pos - self.padding, 0)
-                x_max = min(x_pos + self.padding, mask.shape[1])
+                x_pos = int(x_coords[col + 1])
+                x1 = max(x_pos - tol, 0)
+                x2 = min(x_pos + tol + 1, w)
+                if x2 <= x1:
+                    continue
 
-                if y_min < y_max and x_min < x_max:
-                    roi = mask[y_min:y_max, x_min:x_max]
-                    if roi.size > 0:
-                        vertical_gaps[row, col] = np.any(
-                            np.sum(roi, axis=0) > self.threshold_line
-                        )
+                roi = v_mask[y1:y2, x1:x2] > 0
+                rows_with_line = np.any(roi, axis=1)
 
-        # Заполняем матрицу горизонтальных границ
+                if rows_with_line.size and float(rows_with_line.mean()) >= coverage_thr:
+                    vertical_gaps[row, col] = True
+
+        # Горизонтальные границы (между строками): смотрим ТОЛЬКО h_mask
         for row in range(n_rows - 1):
-            for col in range(n_cols):
-                y_pos = y_coords[row + 1]
-                y_min = max(y_pos - self.padding, 0)
-                y_max = min(y_pos + self.padding, mask.shape[0])
-                x_min = max(x_coords[col] + self.padding, 0)
-                x_max = min(x_coords[col + 1] - self.padding, mask.shape[1])
+            y_pos = int(y_coords[row + 1])
+            y1 = max(y_pos - tol, 0)
+            y2 = min(y_pos + tol + 1, h)
+            if y2 <= y1:
+                continue
 
-                if y_min < y_max and x_min < x_max:
-                    roi = mask[y_min:y_max, x_min:x_max]
-                    if roi.size > 0:
-                        horizontal_gaps[row, col] = np.any(
-                            np.sum(roi, axis=1) > self.threshold_line
-                        )
+            for col in range(n_cols):
+                x1 = max(int(x_coords[col]), 0)
+                x2 = min(int(x_coords[col + 1]), w)
+                if x2 <= x1:
+                    continue
+
+                roi = h_mask[y1:y2, x1:x2] > 0
+                cols_with_line = np.any(roi, axis=0)
+
+                if cols_with_line.size and float(cols_with_line.mean()) >= coverage_thr:
+                    horizontal_gaps[row, col] = True
 
         return vertical_gaps, horizontal_gaps
 
