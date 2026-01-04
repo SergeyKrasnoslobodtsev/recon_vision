@@ -5,7 +5,7 @@ import numpy as np
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 from vision_core.detector.table_detector import TableDetector
-
+from vision_core.utils.drawer import Drawer
 
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
 
@@ -46,16 +46,15 @@ class TestTableDetector:
             bboxes = table_detector.extract_raw_tables(mask_table)
 
             debug_image = original.copy()
-
+            drawer = Drawer(debug_image, side_by_side=True)
             for i, bbox in enumerate(bboxes):
-                debug_image = drawer_bbox_and_label(
-                    debug_image,
-                    bbox,
+                drawer.draw_structure(
+                    bbox.to_tuple(),
                     label=f"Table {i + 1}",
-                    color=(0, 0, 255),
-                    position="top",
+                    color="blue",
+                    position=0,
                 )
-            debug_image.save(output_dir / f"detected_tables_{test_file.stem}.png")
+            drawer.save(output_dir / f"detected_tables_{test_file.stem}.png")
 
     def test_extract_tables(
         self,
@@ -64,7 +63,6 @@ class TestTableDetector:
         pdf_loader_single_page: np.ndarray,
         preprocessor_img: ImagePreprocessor,
         table_detector: TableDetector,
-        drawer_bbox_and_label,
     ):
         """Тестирует детекцию таблиц на изображении"""
 
@@ -88,24 +86,24 @@ class TestTableDetector:
 
             debug_image = original.copy()
 
+            drawer = Drawer(debug_image, side_by_side=True)
+
             if not tables:
                 logger.warning(f"Таблицы не найдены в файле: {test_file.name}")
                 # debug_image.save(output_dir / f"no_tables_{test_file.stem}.png")
             else:
                 for i, table in enumerate(tables):
-                    debug_image = drawer_bbox_and_label(
-                        debug_image,
-                        table.bbox,
+                    drawer.draw_structure(
+                        table.bbox.to_tuple(),
                         label=f"Table {i + 1}",
                         color="blue",
-                        position="top",
+                        position=0,
                     )
                     for cell in table.cells:
-                        debug_image = drawer_bbox_and_label(
-                            debug_image,
-                            cell.bbox,
-                            label=f"R{cell.row}C{cell.col}S{cell.rowspan}x{cell.colspan}",
+                        drawer.draw_structure(
+                            cell.bbox.to_tuple(),
+                            label=f"R{cell.row}C{cell.col}S{cell.colspan}",
                             color="darkgreen",
-                            position="bottom",
+                            position=0,
                         )
-                debug_image.save(output_dir / f"detected_tables_{test_file.stem}.png")
+            drawer.save(output_dir / f"detected_tables_struct_{test_file.stem}.png")
