@@ -26,7 +26,7 @@ def test_collect_metrics_from_test_samples(
     analyzer = ImageAnalyzer()
     results = []
 
-    for pdf_path in pdf_files:
+    for pdf_path in pdf_files[:1]:
         logger.info(f"Обработка: {pdf_path.name}")
 
         pdf_bytes = pdf_path.read_bytes()

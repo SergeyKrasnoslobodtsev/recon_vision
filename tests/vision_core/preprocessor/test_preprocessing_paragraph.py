@@ -31,7 +31,7 @@ class TestPreprocessingParagraph:
 
         pdf_files = list(pdf_path.glob("*.pdf"))
 
-        if not pdf_files:
+        if not pdf_files[:1]:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
         for test_file in pdf_files[:1]:
