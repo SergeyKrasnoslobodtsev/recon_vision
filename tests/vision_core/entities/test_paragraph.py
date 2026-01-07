@@ -10,7 +10,7 @@ class TestParagraphType:
         """Тест значений enum"""
         assert ParagraphType.HEADER.value == 0
         assert ParagraphType.FOOTER.value == 1
-        assert ParagraphType.NONE.value == 2
+        assert ParagraphType.TEXT.value == 2
 
 
 class TestParagraph:
@@ -223,7 +223,7 @@ class TestParagraph:
     def test_classify_by_position_none(self, simple_paragraph):
         """Тест автоматической классификации как NONE"""
         classified = simple_paragraph.classify_by_position(page_height=800)
-        assert classified.type == ParagraphType.NONE
+        assert classified.type == ParagraphType.TEXT
 
     def test_classify_preserves_other_fields(self, paragraph_with_blobs):
         """Тест что классификация сохраняет остальные поля"""
@@ -333,7 +333,7 @@ class TestParagraph:
             text="Default paragraph",
             bbox=BBox(x_min=0, y_min=0, x_max=100, y_max=50),
         )
-        assert para.type == ParagraphType.NONE
+        assert para.type == ParagraphType.TEXT
 
     def test_default_blobs(self):
         """Тест пустого списка блобов по умолчанию"""
