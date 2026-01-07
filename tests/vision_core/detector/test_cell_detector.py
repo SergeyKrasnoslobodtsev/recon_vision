@@ -15,62 +15,6 @@ import numpy as np
 class TestCellDetector:
     """Тесты для TableCellDetector"""
 
-    def test_find_lines_from_mask_table(
-        self,
-        pdf_path: Path,
-        output_dir: Path,
-        pdf_loader_single_page: np.ndarray,
-        preprocessor_img: ImagePreprocessor,
-        preprocessor_table: TablePreprocessor,
-        cell_detector: TableCellDetector,
-    ):
-        """Тестирует детекцию таблиц на изображении"""
-
-        if not pdf_path.exists():
-            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
-
-        pdf_files = list(pdf_path.glob("*.pdf"))
-
-        if not pdf_files:
-            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
-
-        for test_file in pdf_files[11:12]:
-            logger.info(f"Тестирование на файле: {test_file.name}")
-            pdf_bytes = test_file.read_bytes()
-            original = pdf_loader_single_page(pdf_bytes)
-
-            processed = preprocessor_img.process(original)
-
-            table_mask = preprocessor_table.create_table_mask(processed)
-
-            v_lines, h_lines = cell_detector._detect_lines(table_mask)
-
-            debug_image = original.copy()
-
-            from PIL import Image, ImageDraw
-
-            debug_image = Image.fromarray(debug_image)
-            Image.fromarray(table_mask).save(
-                output_dir / f"table_mask_{test_file.stem}.png"
-            )
-            draw = ImageDraw.Draw(debug_image)
-
-            for line in v_lines:
-                draw.line(
-                    [(line[0], line[1]), (line[2], line[3])],
-                    fill="red",
-                    width=1,
-                )
-
-            for line in h_lines:
-                draw.line(
-                    [(line[0], line[1]), (line[2], line[3])],
-                    fill="blue",
-                    width=1,
-                )
-
-            debug_image.save(output_dir / f"detected_lines_{test_file.stem}.png")
-
     def test_extract_cells(
         self,
         pdf_path: Path,
