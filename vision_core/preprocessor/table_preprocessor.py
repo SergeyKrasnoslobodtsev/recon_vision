@@ -16,27 +16,27 @@ class TablePreprocessor:
         if cfg is None:
             cfg = TablePreprocessorConfig()
 
-        self.kernel_gauss = cfg.gaussian_blur_kernel
+        self.cfg = cfg
 
     def create_table_mask(self, image: np.ndarray):
         """Создание маски таблицы из изображения"""
         processed = self._processing(image)
         # 0.005 соотношение в 2 раза меньше чем горизонтальная линия
         # остается больше ложных линий, но потом мы их удалим с помощью clean_mask
-        min_lenght_h = int(processed.shape[0] * 0.03)
-        min_lenght_v = int(processed.shape[1] * 0.006)
+        min_lenght_h = int(processed.shape[0] * self.cfg.horizontal_length_ratio)
+        min_lenght_v = int(processed.shape[1] * self.cfg.vertical_length_ratio)
         logger.debug(
             f"Min lengths - Horizontal: {min_lenght_h}, Vertical: {min_lenght_v}"
         )
-        h_mask = self._detect_horizontal_lines(processed, min_lenght_h)
-        v_mask = self._detect_vertical_lines(processed, min_lenght_v)
+        h_mask = self._detect_lines(processed, min_lenght_h, orientation="horizontal")
+        v_mask = self._detect_lines(processed, min_lenght_v, orientation="vertical")
         table_mask = self._create_table_mask(h_mask, v_mask, min_lenght_h, min_lenght_v)
         return table_mask
 
     def _processing(self, image: np.ndarray):
         blur = cv2.GaussianBlur(
             image,
-            (self.kernel_gauss, self.kernel_gauss),
+            (self.cfg.gaussian_blur_kernel, self.cfg.gaussian_blur_kernel),
             0,
         )
         binary = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[
@@ -53,13 +53,16 @@ class TablePreprocessor:
     ):
         """
         Создает маску таблицы путем комбинирования масок горизонтальных и вертикальных линий.
-        Метод обрабатывает области, похожие на таблицы, выполняя следующие шаги:
-        1. Находит пересечения между горизонтальными и вертикальными масками
-        2. Определяет области, похожие на таблицы, используя ограничивающие прямоугольники
-        3. Очищает каждую область индивидуально для удаления шума
-        4. Объединяет очищенные горизонтальные и вертикальные маски
-        Такой подход улучшает производительность за счет обработки только релевантных областей
-        и закрашивания остальной части изображения черным цветом, что ускоряет операцию _clean_mask.
+
+        Note:
+
+            Метод обрабатывает области, похожие на таблицы, выполняя следующие шаги:
+            1. Находит пересечения между горизонтальными и вертикальными масками
+            2. Определяет области, похожие на таблицы, используя ограничивающие прямоугольники
+            3. Очищает каждую область индивидуально для удаления шума
+            4. Объединяет очищенные горизонтальные и вертикальные маски
+            Такой подход улучшает производительность за счет обработки только релевантных областей
+            и закрашивания остальной части изображения черным цветом, что ускоряет операцию _clean_mask.
 
         Args:
             h_mask (np.ndarray): Бинарная маска, содержащая обнаруженные горизонтальные линии
@@ -144,7 +147,7 @@ class TablePreprocessor:
             # Пропускаем слишком маленькие по площади компоненты (слишком короткие линии)
             if component_area < min_length:
                 continue
-            # TODO: оптимизировать алгоритм передать сырые квадрты
+
             comp_boolean_mask = labels_mask == lbl
             x, y, w, h = cv2.boundingRect(comp_boolean_mask.astype(np.uint8))
 
@@ -194,33 +197,54 @@ class TablePreprocessor:
         for cnt in contours:
             x, y, box_w, box_h = cv2.boundingRect(cnt)
 
-            # гипотиза в документах все таблицы расположены по всей ширине
+            # идея:
+            # в документах все таблицы расположены по всей ширине
             # мы можем определить что таблица не может быть меньше половины ширины изображения
             # также мы понимаем, что высота таблицы не может быть меньше 5% от ее ширины
             # w = 100 h = 10
 
-            if box_w < 0.5 * w:
+            if box_w < self.cfg.min_table_width_ratio * w:
                 continue
 
-            if box_h < 0.05 * box_w:
+            if box_h < self.cfg.min_table_height_ratio * box_w:
                 continue
 
             valid_boxes.append((x, y, box_w, box_h))
 
         return valid_boxes
 
-    def _detect_horizontal_lines(self, binary: np.ndarray, kernel_width: int):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_width, 1))
-        horizontal = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)
-        kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
-        reconstructed_horizontal = cv2.dilate(horizontal, kernel_dilate, iterations=2)
+    def _detect_lines(
+        self,
+        binary: np.ndarray,
+        kernel_size: int,
+        orientation: str = "horizontal",
+    ):
+        """Детекция линий
 
-        return reconstructed_horizontal
+        Args:
+            binary (np.ndarray): Бинарное изображение
+            kernel_size (int): Размер морфологического ядра
+            orientation (str, optional): Тип ориентации линии. Defaults to "horizontal".
 
-    def _detect_vertical_lines(self, binary: np.ndarray, kernel_height: int):
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_height))
-        vertical = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=2)
-        kernel_dilate = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
-        reconstructed_vertical = cv2.dilate(vertical, kernel_dilate, iterations=2)
+        Raises:
+            ValueError: Если ориентация не "horizontal" или "vertical"
 
-        return reconstructed_vertical
+        Returns:
+            np.ndarray: Маска с обнаруженными линиями
+        """
+        if orientation == "horizontal":
+            morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, 1))
+            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
+        elif orientation == "vertical":
+            morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_size))
+            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
+        else:
+            raise ValueError(
+                f"Неверная ориентация: {orientation}. "
+                f"Ожидается 'horizontal' или 'vertical'"
+            )
+
+        lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, morph_kernel, iterations=2)
+        reconstructed = cv2.dilate(lines, dilate_kernel, iterations=2)
+
+        return reconstructed
