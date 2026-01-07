@@ -20,15 +20,10 @@ class TableDetector:
         if config is None:
             config = VisionCoreConfig()
 
-        self.config = config
-        cfg = config.detector
-
-        self.min_table_area = cfg.min_table_area
-        self.approx_poly_eps = cfg.approx_poly_eps
-        self.mode_merge_cells = cfg.mode_merge_cells
+        self.cfg = config.table_detector
 
         self._table_mask: Optional[np.ndarray] = None
-        self.preprocessor = TablePreprocessor(config.preprocessor)
+        self.preprocessor = TablePreprocessor(config.table_preprocessor)
         self.table_cell_detector = TableCellDetector(config.cell_detector)
 
     def detect_tables(self, image: np.ndarray) -> list[Table]:
@@ -46,7 +41,7 @@ class TableDetector:
             cells = self.table_cell_detector.extract_cells(
                 roi_mask,
                 bbox.to_tuple(),
-                merge_mode=self.mode_merge_cells,
+                merge_mode=self.cfg.mode_merge_cells,
             )
             table = Table(
                 id=f"table_{idx}",
@@ -135,11 +130,11 @@ class TableDetector:
         bboxes: list[BBox] = []
         for cnt in contours:
             arclen = cv2.arcLength(cnt, True)
-            eps = self.approx_poly_eps * arclen
+            eps = self.cfg.approx_poly_eps * arclen
             c_poly = cv2.approxPolyDP(cnt, eps, True)
             if len(c_poly) != 4:
                 continue
-            if cv2.contourArea(c_poly) < self.min_table_area:
+            if cv2.contourArea(c_poly) < self.cfg.min_table_area:
                 continue
             pts = c_poly.reshape(4, 2)
             ordered_pts = self._order_points(pts)
