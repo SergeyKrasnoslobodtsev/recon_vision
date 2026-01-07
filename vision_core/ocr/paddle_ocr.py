@@ -7,7 +7,25 @@ from typing import Union, Optional
 
 
 class PaddleOcrEngine(OcrEngine):
+    """Реализует OCR-движок на базе PaddleOCR.
+
+    Использует модели PaddleOCR для распознавания текста на изображениях.
+    Поддерживает пакетную обработку и итеративный режим для больших объёмов данных.
+
+    Attributes:
+        cfg: Конфигурация PaddleOCR из VisionCoreConfig.
+        ocr: Экземпляр PaddleOCR для выполнения распознавания.
+    """
+
     def __init__(self, config: Optional[VisionCoreConfig]):
+        """Инициализирует движок PaddleOCR.
+
+        Args:
+            config: Конфигурация VisionCore. Если None, используется конфигурация по умолчанию.
+
+        Raises:
+            FileNotFoundError: Если директории с моделями распознавания или детекции не найдены.
+        """
         if config is None:
             config = VisionCoreConfig()
 
@@ -15,12 +33,12 @@ class PaddleOcrEngine(OcrEngine):
 
         if not Path(self.cfg.text_detection_model_dir).exists():
             raise FileNotFoundError(
-                f"Text detection model directory not found: {self.cfg.text_detection_model_dir}"
+                f"Директория модели детекции текста не найдена: {self.cfg.text_detection_model_dir}"
             )
 
         if not Path(self.cfg.text_recognition_model_dir).exists():
             raise FileNotFoundError(
-                f"Text recognition model directory not found: {self.cfg.text_recognition_model_dir}"
+                f"Директория модели распознавания текста не найдена: {self.cfg.text_recognition_model_dir}"
             )
 
         self.ocr = PaddleOCR(
@@ -35,7 +53,28 @@ class PaddleOcrEngine(OcrEngine):
         )
 
     def predict_iter(self, images: Union[np.ndarray, list[np.ndarray]]):
-        """Распознает текст на изображениях и возвращает результаты по одному изображению за раз."""
+        """Распознаёт текст на изображениях в итеративном режиме.
+
+        Обрабатывает изображения по одному и возвращает результаты через генератор.
+        Полезно для больших наборов данных, когда нежелательно загружать
+        все результаты в память одновременно.
+
+        Args:
+            images: Одно изображение (numpy array) или список изображений для распознавания.
+                Если передан одиночный массив, автоматически оборачивается в список.
+
+        Yields:
+            list[OcrResult]: Список результатов распознавания для каждого изображения.
+                Каждый элемент содержит текст, уверенность (0.0–1.0) и координаты
+                ограничивающего прямоугольника (x1, y1, x2, y2).
+
+        Examples:
+            >>> engine = PaddleOcrEngine(config)
+            >>> images = [image1, image2]
+            >>> for results in engine.predict_iter(images):
+            ...     for result in results:
+            ...         print(f"Текст: {result.text}, Уверенность: {result.confidence}")
+        """
         if isinstance(images, np.ndarray):
             images = [images]
 
@@ -57,5 +96,12 @@ class PaddleOcrEngine(OcrEngine):
             yield out
 
     def predict(self, images: Union[np.ndarray, list[np.ndarray]]):
-        """Распознает текст на изображениях и возвращает результаты для всех изображений."""
+        """Распознаёт текст на изображениях и возвращает все результаты сразу.
+
+        Args:
+            images: Одно изображение (numpy array) или список изображений для распознавания.
+
+        Returns:
+            list[list[OcrResult]]: Список списков результатов распознавания для каждого изображения.
+        """
         return list(self.predict_iter(images))
