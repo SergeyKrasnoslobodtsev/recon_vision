@@ -17,7 +17,7 @@ class PaddleOcrEngine(OcrEngine):
         ocr: Экземпляр PaddleOCR для выполнения распознавания.
     """
 
-    def __init__(self, config: Optional[VisionCoreConfig]):
+    def __init__(self, config: Optional[VisionCoreConfig] = None):
         """Инициализирует движок PaddleOCR.
 
         Args:
@@ -79,9 +79,9 @@ class PaddleOcrEngine(OcrEngine):
             images = [images]
 
         for res in self.ocr.predict_iter(images):
-            boxes = res.get("rec_boxes", []) or []
-            texts = res.get("rec_texts", []) or []
-            scores = res.get("rec_scores", []) or []
+            boxes = res["rec_boxes"]
+            texts = res["rec_texts"]
+            scores = res["rec_scores"]
 
             out: list[OcrResult] = []
             for box, text, score in zip(boxes, texts, scores):
@@ -89,7 +89,7 @@ class PaddleOcrEngine(OcrEngine):
                     OcrResult(
                         text=str(text),
                         confidence=float(score),
-                        bboxes=(box[0], box[1], box[2], box[3]),
+                        bbox=(box[0], box[1], box[2], box[3]),
                     )
                 )
 

@@ -29,6 +29,11 @@ class BBox(BaseModel):
         """Возвращает координаты BBox в виде кортежа целых чисел (x_min, y_min, x_max, y_max)"""
         return (int(self.x_min), int(self.y_min), int(self.x_max), int(self.y_max))
 
+    @classmethod
+    def from_tuple(cls, coords: tuple[int, int, int, int]) -> "BBox":
+        """Создаёт BBox из кортежа координат (x_min, y_min, x_max, y_max)"""
+        return cls(x_min=coords[0], y_min=coords[1], x_max=coords[2], y_max=coords[3])
+
     def padding(self, pixel: float) -> "BBox":
         """Возвращает BBox с добавленным отступом в пикселях"""
         return BBox(

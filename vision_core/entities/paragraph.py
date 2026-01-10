@@ -7,6 +7,7 @@ class ParagraphType(enum.Enum):
     HEADER = 0
     FOOTER = 1
     TEXT = 2
+    NONE = 3
 
 
 class Paragraph(BaseModel):

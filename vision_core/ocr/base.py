@@ -20,12 +20,12 @@ class OcrResult:
     Attributes:
         text: Распознанный текст.
         confidence: Уровень уверенности распознавания в диапазоне [0, 1].
-        bboxes: Ограничивающий прямоугольник в формате (x_min, y_min, x_max, y_max).
+        bbox: Ограничивающий прямоугольник в формате (x_min, y_min, x_max, y_max).
     """
 
     text: str
     confidence: float
-    bboxes: tuple[int, int, int, int]
+    bbox: tuple[int, int, int, int]
 
 
 class OcrEngine(Protocol):
