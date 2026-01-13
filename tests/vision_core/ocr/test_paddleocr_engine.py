@@ -45,7 +45,7 @@ def test_init_raises_when_detection_dir_missing(monkeypatch, tmp_path):
     cfg = _make_vc_config_with_dirs(str(det_dir), str(rec_dir))
 
     with pytest.raises(
-        FileNotFoundError, match=r"Text detection model directory not found"
+        FileNotFoundError, match=r"Директория модели детекции текста не найдена"
     ):
         paddle_ocr_mod.PaddleOcrEngine(cfg)
 
@@ -74,7 +74,7 @@ def test_init_raises_when_recognition_dir_missing(monkeypatch, tmp_path):
     cfg = _make_vc_config_with_dirs(str(det_dir), str(rec_dir))
 
     with pytest.raises(
-        FileNotFoundError, match=r"Text recognition model directory not found"
+        FileNotFoundError, match=r"Директория модели распознавания текста не найдена"
     ):
         paddle_ocr_mod.PaddleOcrEngine(cfg)
 
@@ -118,7 +118,7 @@ def test_predict_iter_accepts_single_ndarray_and_yields_ocrresults(
     assert len(batch) == 1
     assert batch[0].text == "hello"
     assert batch[0].confidence == 0.9
-    assert batch[0].bboxes == (1, 2, 3, 4)
+    assert batch[0].bbox == (1, 2, 3, 4)
 
     # Проверим есть параметры инициализации PaddleOCR из конфигурации
     ctor = captured["ctor_kwargs"]

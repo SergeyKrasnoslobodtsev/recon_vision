@@ -3,8 +3,6 @@ import pytest
 import shutil
 import os
 import tempfile
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 
 from _pytest.logging import LogCaptureFixture
@@ -13,13 +11,13 @@ from loguru import logger
 
 from app.services.cache_in_disk import CacheInDisk
 
-from vision_core.entities.bbox import BBox
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
 from vision_core.detector.table_detector import TableDetector
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.analizer.page_analyzer import PageAnalyzer
 
 ### Logger configuration
 
@@ -156,53 +154,7 @@ def paragraph_detector() -> ParagraphDetector:
     return ParagraphDetector()
 
 
-### Utility fixtures
-
-
 @pytest.fixture
-def drawer_bbox_and_label():
-    """Функция для отрисовки BBox и метки на изображении"""
-
-    def _drawer_bbox_and_label(
-        image: np.ndarray,
-        bbox: BBox,
-        label: str,
-        color,
-        position: str = "top",  # top or bottom
-    ):
-        """Отрисовывает BBox и метку на изображении"""
-        # rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
-        if isinstance(image, np.ndarray):
-            pil = Image.fromarray(image)
-        else:
-            pil = image
-
-        new_image = Image.new(pil.mode, pil.size, (255, 255, 255))
-
-        draw = ImageDraw.Draw(new_image)
-        fnt = ImageFont.load_default(size=24)
-        pt1 = (int(bbox.x_min), int(bbox.y_min))
-        pt2 = (int(bbox.x_max), int(bbox.y_max))
-        draw.rectangle([pt1, pt2], outline=color, width=2)
-
-        def _label(coords, label, font, color):
-            bbox = draw.textbbox(coords, label, font=font)
-            padded_bbox = (bbox[0] - 5, bbox[1] - 5, bbox[2] + 5, bbox[3] + 5)
-            draw.rectangle(padded_bbox, fill=color)
-            draw.text(coords, label, font=font, fill=(255, 255, 255, 255))
-
-        if position == "top":
-            coords = (pt1[0] + 5, pt1[1] - 30)
-            _label(coords, label, fnt, color)
-
-        else:
-            coords = (pt1[0] + 5, pt2[1] - 30)
-            _label(coords, label, fnt, color)
-
-        combinesd_image = Image.new("RGB", (pil.width * 2, pil.height))
-        combinesd_image.paste(pil, (0, 0))
-        combinesd_image.paste(new_image, (pil.width, 0))
-
-        return combinesd_image
-
-    return _drawer_bbox_and_label
+def page_analyzer() -> PageAnalyzer:
+    """Экземпляр PageAnalyzer"""
+    return PageAnalyzer()

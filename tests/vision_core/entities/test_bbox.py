@@ -67,3 +67,42 @@ def test_degenerate_boxes():
     b = BBox(x_min=1, y_min=1, x_max=1, y_max=1)
     assert a.iou(b) == 1.0
     assert a.intersection_over_min(b) == 1.0
+
+
+def test_from_tuple_valid_coords():
+    coords = (10, 20, 100, 200)
+    bbox = BBox.from_tuple(coords)
+    assert bbox.x_min == 10
+    assert bbox.y_min == 20
+    assert bbox.x_max == 100
+    assert bbox.y_max == 200
+
+
+def test_from_tuple_zero_coords():
+    coords = (0, 0, 0, 0)
+    bbox = BBox.from_tuple(coords)
+    assert bbox.x_min == 0
+    assert bbox.y_min == 0
+    assert bbox.x_max == 0
+    assert bbox.y_max == 0
+
+
+def test_from_tuple_negative_coords():
+    coords = (-10, -20, 50, 60)
+    bbox = BBox.from_tuple(coords)
+    assert bbox.x_min == -10
+    assert bbox.y_min == -20
+    assert bbox.x_max == 50
+    assert bbox.y_max == 60
+
+
+def test_from_tuple_inverted_coords():
+    # x_max < x_min, y_max < y_min
+    coords = (100, 200, 10, 20)
+    bbox = BBox.from_tuple(coords)
+    assert bbox.x_min == 100
+    assert bbox.y_min == 200
+    assert bbox.x_max == 10
+    assert bbox.y_max == 20
+    assert bbox.width == 0.0  # protected by max(0.0, ...)
+    assert bbox.height == 0.0

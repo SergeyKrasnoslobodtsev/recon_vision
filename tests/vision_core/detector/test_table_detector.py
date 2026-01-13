@@ -21,7 +21,6 @@ class TestTableDetector:
         preprocessor_img: ImagePreprocessor,
         preprocessor_table: TablePreprocessor,
         table_detector: TableDetector,
-        drawer_bbox_and_label,
     ):
         """Тестирует детекцию таблиц на изображении"""
 

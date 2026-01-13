@@ -1,11 +1,9 @@
 import pytest
 from pathlib import Path
 from loguru import logger
-from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
-from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
-from vision_core.detector.paragraph_detector import ParagraphDetector
-from vision_core.detector.table_detector import TableDetector
+from vision_core.analizer.page_analyzer import PageAnalyzer
+
+from vision_core.utils.drawer import Drawer
 
 import numpy as np
 
@@ -16,17 +14,12 @@ import numpy as np
 class TestParagraphDetector:
     """Тесты для ParagraphDetector"""
 
-    def test_find_paragraphs(
+    def test_page_analyzer(
         self,
         pdf_path: Path,
         output_dir: Path,
         pdf_loader_single_page: np.ndarray,
-        preprocessor_img: ImagePreprocessor,
-        preprocessor_table: TablePreprocessor,
-        table_detector: TableDetector,
-        preprocessor_paragraph: ParagraphPreprocessor,
-        paragraph_detector: ParagraphDetector,
-        drawer_bbox_and_label,
+        page_analyzer: PageAnalyzer,
     ):
         """Тестирует детекцию абзацев на изображении"""
 
@@ -37,30 +30,48 @@ class TestParagraphDetector:
 
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
-
-        for test_file in pdf_files[:1]:
+        page_analyzer = PageAnalyzer()
+        for test_file in pdf_files[:15]:
             logger.info(f"Тестирование на файле: {test_file.name}")
+
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
-            processed = preprocessor_img.process(original)
-            mask_table = preprocessor_table.create_table_mask(processed)
 
-            bboxes = table_detector.extract_raw_tables(mask_table)
+            page = page_analyzer.analyze_page(original)
 
-            mask_paragraph = preprocessor_paragraph.create_paragraph_mask(
-                processed, bboxes
-            )
-
-            bboxes = paragraph_detector.extract_paragraphs(mask_paragraph)
             debug_image = original.copy()
 
-            for i, bbox in enumerate(bboxes):
-                debug_image = drawer_bbox_and_label(
-                    debug_image,
-                    bbox,
-                    label=f"Paragraph {i + 1}",
-                    color="darkorange",
-                    position="top",
+            drawer = Drawer(debug_image, side_by_side=True)
+
+            for paragraph in page.paragraphs:
+                if paragraph.type == 0:
+                    drawer.draw_structure(
+                        paragraph.bbox.to_tuple(),
+                        label=f"{paragraph.type} {paragraph.id}",
+                        color="darkgreen",
+                        position=0,
+                    )
+                elif paragraph.type == 1:
+                    drawer.draw_structure(
+                        paragraph.bbox.to_tuple(),
+                        label=f"{paragraph.type} {paragraph.id}",
+                        color="darkblue",
+                        position=0,
+                    )
+                else:
+                    drawer.draw_structure(
+                        paragraph.bbox.to_tuple(),
+                        label=f"{paragraph.type} {paragraph.id}",
+                        color="darkorange",
+                        position=0,
+                    )
+
+            for table in page.tables:
+                drawer.draw_structure(
+                    table.bbox.to_tuple(),
+                    label=f"Table {table.id}",
+                    color="blue",
+                    position=0,
                 )
 
-            debug_image.save(output_dir / f"detected_paragraphs_{test_file.stem}.png")
+            drawer.save(output_dir / f"detected_paragraphs_{test_file.stem}.png")
