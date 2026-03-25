@@ -96,7 +96,7 @@ class ParagraphDetectorConfig:
     """
 
     vertical_spacing_factor: float = 2.0
-    min_cluster_size: int = 2
+    min_cluster_size: int = 4
     stamp_area_threshold: float = 0.25
     column_gap_threshold: int = 50
     indent_margin: int = 10
@@ -137,3 +137,4 @@ class VisionCoreConfig:
                 **config_dict.get("paragraph_detector", {})
             ),
         )
+
