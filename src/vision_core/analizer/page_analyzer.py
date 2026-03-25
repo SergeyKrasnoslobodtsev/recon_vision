@@ -162,7 +162,7 @@ class PageAnalyzer:
             ocr_results: Результаты OCR со всего изображения.
 
         Note:
-            Использует геометрическое вхождение bbox (cell.bbox.contains).
+            Использует геометрическое вхождение bbox (cell.bbox.contains_center).
             Это может давать ложные срабатывания, если таблицы пересекаются или
             OCR-блоки выходят за границы ячеек.
         """
@@ -174,7 +174,7 @@ class PageAnalyzer:
                     if ocr_item.confidence < self.CONFIDENCE_THRESHOLD:
                         continue
 
-                    if not cell.bbox.contains(BBox.from_tuple(ocr_item.bbox)):
+                    if not cell.bbox.contains_center(BBox.from_tuple(ocr_item.bbox)):
                         continue
 
                     texts.append(ocr_item.text)
