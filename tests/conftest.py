@@ -9,7 +9,17 @@ from _pytest.logging import LogCaptureFixture
 from loguru import logger
 
 
-from app.services.cache_in_disk import CacheInDisk
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SRC_DIR = PROJECT_ROOT / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+
+from app.infrastructure.persistence.diskcache_process_repository import (
+    DiskCacheProcessRepository,
+)
+from app.domain.entities.reconciliation_data import ReconciliationData
+from app.domain.value_objects.period import Period
 
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
@@ -37,12 +47,12 @@ def configure_logger(caplog: LogCaptureFixture):
 
 @pytest.fixture
 def cache_service():
-    """Фикстура для создания экземпляра CacheInDisk с уникальным временным кэшем"""
+    """Создаёт экземпляр репозитория процессов с уникальным временным кэшем."""
     # Создаем уникальную временную директорию для каждого теста
     temp_dir = tempfile.mkdtemp(prefix="test_cache_")
     cache_path = os.path.join(temp_dir, ".cache")
 
-    cache = CacheInDisk(expire=60, cache_dir=cache_path)
+    cache = DiskCacheProcessRepository(expire=60, cache_dir=cache_path)
 
     yield cache
 
@@ -81,6 +91,19 @@ def sample_structure():
         "buyer": "Test Buyer",
         "period": {"start": "2025-01-01", "end": "2025-01-31"},
     }
+
+
+@pytest.fixture
+def sample_reconciliation_data() -> ReconciliationData:
+    """Возвращает тестовые доменные данные акта сверки."""
+    return ReconciliationData(
+        seller="Test Seller",
+        buyer="Test Buyer",
+        period=Period(start="2025-01-01", end="2025-01-31"),
+        debit=[],
+        credit=[],
+        message="done",
+    )
 
 
 ### Common pdf file and output directory fixtures

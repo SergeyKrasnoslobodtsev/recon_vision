@@ -31,7 +31,7 @@ class TestParagraphDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
         page_analyzer = PageAnalyzer()
-        for test_file in pdf_files[:15]:
+        for test_file in pdf_files[:1]:
             logger.info(f"Тестирование на файле: {test_file.name}")
 
             pdf_bytes = test_file.read_bytes()

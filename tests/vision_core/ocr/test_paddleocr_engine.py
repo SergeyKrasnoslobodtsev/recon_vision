@@ -22,6 +22,19 @@ def _make_vc_config_with_dirs(det_dir: str, rec_dir: str) -> VisionCoreConfig:
     return cfg
 
 
+def test_default_model_dirs_point_to_repo_models():
+    cfg = VisionCoreConfig()
+
+    assert cfg.paddleocr.text_detection_model_dir.endswith(
+        "/models/PP-OCRv5_server_det"
+    )
+    assert cfg.paddleocr.text_recognition_model_dir.endswith(
+        "/models/cyrillic_PP-OCRv5_mobile_rec"
+    )
+    assert "/src/models/" not in cfg.paddleocr.text_detection_model_dir
+    assert "/src/models/" not in cfg.paddleocr.text_recognition_model_dir
+
+
 def test_init_raises_when_detection_dir_missing(monkeypatch, tmp_path):
     class FakePaddleOCR:
         def __init__(self, **kwargs):  # pragma: no cover

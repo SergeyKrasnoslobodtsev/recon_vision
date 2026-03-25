@@ -1,4 +1,8 @@
 import os
 import sys
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "..", "app"))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+SRC_DIR = os.path.join(PROJECT_ROOT, "src")
+
+if SRC_DIR not in sys.path:
+	sys.path.insert(0, SRC_DIR)

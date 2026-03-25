@@ -1,145 +1,106 @@
-import pytest
 import asyncio
-from app.services.cache_in_disk import CacheInDisk, ProcessData
+import shutil
+import tempfile
+
+import pytest
+
+from app.domain.entities.process import ProcessState
+from app.domain.enums.process_status import ProcessStatus
+from app.infrastructure.persistence.models import ProcessData
+from app.infrastructure.persistence.diskcache_process_repository import (
+    DiskCacheProcessRepository,
+)
 
 
 class TestProcessData:
-    """Тесты для класса ProcessData"""
+    """Проверяет модель хранения процесса."""
 
-    def test_process_data_initialization(self, sample_pdf_bytes, sample_structure):
-        """Тест создания ProcessData"""
-        data = ProcessData(pdf_bytes=sample_pdf_bytes, structure=sample_structure)
+    def test_process_data_initialization(self, sample_pdf_bytes):
+        """Создаёт ProcessData с доменным состоянием процесса."""
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
+        data = ProcessData(process_state=process_state, pdf_bytes=sample_pdf_bytes)
 
+        assert data.process_state is process_state
         assert data.pdf_bytes == sample_pdf_bytes
-        assert data.structure == sample_structure
         assert data.created_at is not None
 
 
-class TestCacheInMemory:
-    """Юнит-тесты для CacheInMemory"""
+class TestDiskCacheProcessRepository:
+    """Проверяет репозиторий процессов на базе DiskCache."""
 
     @pytest.mark.asyncio
-    async def test_create_process(
-        self, cache_service, sample_pdf_bytes, sample_structure
-    ):
-        """Тест создания процесса"""
-        process_id = await cache_service.create_process(
-            sample_pdf_bytes, sample_structure
-        )
+    async def test_add_assigns_process_id(self, cache_service, sample_pdf_bytes):
+        """Сохраняет процесс и присваивает ему UUID."""
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
 
-        assert process_id is not None
+        process_id = await cache_service.add(process_state)
+
+        assert process_id
         assert isinstance(process_id, str)
-        assert len(process_id) == 36  # UUID format
+        assert len(process_id) == 36
+        assert process_state.process_id == process_id
 
     @pytest.mark.asyncio
-    async def test_get_structure(
-        self, cache_service, sample_pdf_bytes, sample_structure
+    async def test_get_returns_saved_process_state(
+        self,
+        cache_service,
+        sample_pdf_bytes,
+        sample_reconciliation_data,
     ):
-        """Тест получения структуры процесса"""
-        process_id = await cache_service.create_process(
-            sample_pdf_bytes, sample_structure
-        )
-        structure = await cache_service.get_structure(process_id)
+        """Возвращает ранее сохранённое состояние процесса."""
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
+        process_id = await cache_service.add(process_state)
+        process_state.mark_completed(sample_reconciliation_data, message="done")
+        await cache_service.update(process_state)
 
-        assert structure == sample_structure
+        restored = await cache_service.get(process_id)
 
-    @pytest.mark.asyncio
-    async def test_get_structure_not_found(self, cache_service):
-        """Тест получения структуры несуществующего процесса"""
-        structure = await cache_service.get_structure("non-existent-id")
-
-        assert structure is None
-
-    @pytest.mark.asyncio
-    async def test_get_pdf(self, cache_service, sample_pdf_bytes, sample_structure):
-        """Тест получения PDF процесса"""
-        process_id = await cache_service.create_process(
-            sample_pdf_bytes, sample_structure
-        )
-        pdf_bytes = await cache_service.get_pdf(process_id)
-
-        assert pdf_bytes == sample_pdf_bytes
+        assert restored is not None
+        assert restored.process_id == process_id
+        assert restored.status == ProcessStatus.COMPLETED
+        assert restored.source_pdf == sample_pdf_bytes
+        assert restored.reconciliation_data is not None
+        assert restored.reconciliation_data.seller == "Test Seller"
 
     @pytest.mark.asyncio
-    async def test_get_pdf_not_found(self, cache_service):
-        """Тест получения PDF несуществующего процесса"""
-        pdf_bytes = await cache_service.get_pdf("non-existent-id")
+    async def test_get_returns_none_for_unknown_process(self, cache_service):
+        """Возвращает None для отсутствующего процесса."""
+        restored = await cache_service.get("missing-process")
 
-        assert pdf_bytes is None
-
-    @pytest.mark.asyncio
-    async def test_delete_process(
-        self, cache_service, sample_pdf_bytes, sample_structure
-    ):
-        """Тест удаления процесса"""
-        process_id = await cache_service.create_process(
-            sample_pdf_bytes, sample_structure
-        )
-
-        # Проверяем, что процесс существует
-        structure = await cache_service.get_structure(process_id)
-        assert structure is not None
-
-        # Удаляем процесс
-        await cache_service.delete_process(process_id)
-
-        # Проверяем, что процесс удален
-        structure = await cache_service.get_structure(process_id)
-        assert structure is None
+        assert restored is None
 
     @pytest.mark.asyncio
-    async def test_delete_non_existent_process(self, cache_service):
-        """Тест удаления несуществующего процесса"""
-        # Не должно вызывать ошибку
-        await cache_service.delete_process("non-existent-id")
+    async def test_update_requires_process_id(self, cache_service, sample_pdf_bytes):
+        """Не обновляет процесс без идентификатора."""
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
+
+        with pytest.raises(ValueError, match="process_id"):
+            await cache_service.update(process_state)
 
     @pytest.mark.asyncio
-    async def test_ttl_expiration(self, sample_pdf_bytes, sample_structure):
-        """Тест автоматического удаления по TTL"""
-        import tempfile
+    async def test_delete_removes_saved_process(self, cache_service, sample_pdf_bytes):
+        """Удаляет сохранённый процесс из репозитория."""
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
+        process_id = await cache_service.add(process_state)
 
+        await cache_service.delete(process_id)
+
+        restored = await cache_service.get(process_id)
+        assert restored is None
+
+    @pytest.mark.asyncio
+    async def test_ttl_expiration_removes_process(self, sample_pdf_bytes):
+        """Удаляет процесс после истечения TTL."""
         temp_dir = tempfile.mkdtemp(prefix="test_ttl_")
+        repository = DiskCacheProcessRepository(expire=1, cache_dir=temp_dir)
+        process_state = ProcessState(source_pdf=sample_pdf_bytes)
+        process_id = await repository.add(process_state)
 
-        cache = CacheInDisk(expire=1, cache_dir=temp_dir)
-        process_id = await cache.create_process(sample_pdf_bytes, sample_structure)
-
-        # Проверяем, что процесс существует
-        structure = await cache.get_structure(process_id)
-        assert structure is not None
-
-        # Ждем истечения TTL
         await asyncio.sleep(2)
+        repository.cache.expire()
 
-        # Вызываем expire для принудительной очистки
-        cache.cache.expire()
+        restored = await repository.get(process_id)
+        assert restored is None
 
-        # Проверяем, что процесс удален
-        structure = await cache.get_structure(process_id)
-        assert structure is None
-
-        # Очистка
-        cache.cache.close()
-        import shutil
-
+        repository.close()
         shutil.rmtree(temp_dir, ignore_errors=True)
-
-    @pytest.mark.asyncio
-    async def test_cleanup_expired_cache(self, sample_pdf_bytes, sample_structure):
-        """Тест фоновой задачи очистки кэша"""
-        cache = CacheInDisk(expire=1)
-        process_id = await cache.create_process(sample_pdf_bytes, sample_structure)
-
-        # Запускаем задачу очистки на короткое время
-        task = asyncio.create_task(cache.cleanup_expired_cache())
-
-        await asyncio.sleep(2)
-
-        task.cancel()
-        try:
-            await task
-        except asyncio.CancelledError:
-            pass
-
-        # Проверяем, что устаревшие записи очищены
-        structure = await cache.get_structure(process_id)
-        assert structure is None
