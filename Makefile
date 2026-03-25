@@ -9,6 +9,11 @@ VENV_DIR ?= .venv
 PYTHON_BIN := $(shell $(PYTHON) -c 'import os, sys; print(os.path.realpath(sys.executable))' 2>/dev/null)
 UV ?= $(PYTHON_BIN) -m uv
 VENV_PYTHON := $(VENV_DIR)/bin/python
+PADDLE_VERSION ?= 3.3.0
+PADDLE_CPU_INDEX_URL ?= https://www.paddlepaddle.org.cn/packages/stable/cpu/
+PADDLE_GPU_INDEX_URL ?= https://www.paddlepaddle.org.cn/packages/stable/cu130/
+PADDLE_CPU_PACKAGE := paddlepaddle==$(PADDLE_VERSION)
+PADDLE_GPU_PACKAGE := paddlepaddle-gpu==$(PADDLE_VERSION)
 
 ifeq ($(TIMEOUT),)
 TIMEOUT := 60
@@ -24,7 +29,7 @@ endif
 
 # Target section and Global definitions
 # -----------------------------------------------------------------------------
-.PHONY: all bootstrap-uv check-python clean test install run deploy down generate_dot_env venv
+.PHONY: all bootstrap-uv check-python clean test install install-base install-cpu install-gpu run deploy down generate_dot_env venv
 
 all: clean install test run deploy down
 
@@ -52,8 +57,19 @@ test: venv
 metrics:
 	radon mi -s src/
 
-install: generate_dot_env venv
+
+install-base: generate_dot_env venv
 	$(UV) pip install --python $(VENV_PYTHON) -e ".[dev]"
+
+install: install-cpu
+
+install-cpu: install-base
+	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
+	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_CPU_INDEX_URL) $(PADDLE_CPU_PACKAGE)
+
+install-gpu: install-base
+	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
+	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_GPU_INDEX_URL) $(PADDLE_GPU_PACKAGE)
 
 run: venv
 	PYTHONPATH=src/ $(VENV_PYTHON) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
