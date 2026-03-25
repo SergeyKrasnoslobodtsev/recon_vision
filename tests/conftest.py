@@ -130,7 +130,7 @@ def pdf_loader_single_page():
 
     def _loader(pdf_bytes):
         with PDFLoader(pdf_bytes) as loader:
-            return loader.get_page_image(0, dpi=200)
+            return loader.get_page_image(0, dpi=300)
 
     return _loader
 

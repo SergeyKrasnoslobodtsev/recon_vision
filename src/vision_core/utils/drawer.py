@@ -1,8 +1,9 @@
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
-from typing import Union, Optional
+from typing import Any, Union, Optional
 from enum import Enum
 from pathlib import Path
+from textwrap import wrap
 
 
 class Position(Enum):
@@ -16,14 +17,22 @@ class Drawer:
     Drawer, упрощающий отрисовку боксов/подписей в тестах.
 
     Новый режим:
-      side_by_side=True -> итоговое изображение: [original | blank], рисование по умолчанию на blank (справа).
+            side_by_side=True -> итоговое изображение: [original | blank], рисование по умолчанию на blank (справа).
+            text_panel_width > 0 -> добавляет отдельную текстовую панель справа от debug-области.
     """
+
+    _FONT_CANDIDATES = (
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    )
 
     def __init__(
         self,
         image: Union[np.ndarray, Image.Image],
         *,
         side_by_side: bool = False,
+        text_panel_width: int = 0,
         blank_color: tuple[int, int, int] = (255, 255, 255),
         draw_on: str = "auto",  # "auto" | "left" | "right" | "both"
     ):
@@ -40,22 +49,26 @@ class Drawer:
         self._left = base
         self._side_by_side = side_by_side
         self._blank_color = blank_color
+        self._text_panel_width = max(0, int(text_panel_width))
 
         w, h = self._left.size
 
         if side_by_side:
             right = Image.new("RGB", (w, h), color=blank_color)
-            canvas = Image.new("RGB", (w * 2, h), color=blank_color)
+            canvas_width = (w * 2) + self._text_panel_width
+            canvas = Image.new("RGB", (canvas_width, h), color=blank_color)
             canvas.paste(self._left, (0, 0))
             canvas.paste(right, (w, 0))
             self._canvas = canvas
             self._x_left_offset = 0
             self._x_right_offset = w
+            self._text_panel_offset = w * 2
             self._draw_on = "right" if draw_on == "auto" else draw_on
         else:
             self._canvas = self._left
             self._x_left_offset = 0
             self._x_right_offset = 0
+            self._text_panel_offset = self._canvas.size[0]
             self._draw_on = "left" if draw_on == "auto" else draw_on
 
         self._draw = ImageDraw.Draw(self._canvas)
@@ -64,14 +77,22 @@ class Drawer:
     def _get_font(self):
         if self._font is not None:
             return self._font
-        try:
-            self._font = ImageFont.load_default()
-        except Exception:
-            self._font = None
+
+        for font_path in self._FONT_CANDIDATES:
+            if Path(font_path).exists():
+                self._font = ImageFont.truetype(font_path, size=14)
+                return self._font
+
+        self._font = ImageFont.load_default()
         return self._font
 
     def _targets(self):
+        return self._resolve_targets()
+
+    def _resolve_targets(self, draw_on: Optional[str] = None) -> list[int]:
         mode = self._draw_on
+        if draw_on is not None:
+            mode = draw_on
         if mode not in {"left", "right", "both"}:
             raise ValueError(f"draw_on must be one of: left/right/both (got {mode!r})")
 
@@ -92,7 +113,8 @@ class Drawer:
         color: Union[str, tuple[int, int, int]] = "blue",
         width: int = 2,
         position=None,
-        fill: Optional[tuple[int, int, int]] = None,
+        fill: Optional[Union[tuple[int, int, int], tuple[int, int, int, int]]] = None,
+        draw_on: Optional[str] = None,
     ):
         """
         bbox_xyxy: (x1, y1, x2, y2) в координатах ОРИГИНАЛА (левой части).
@@ -100,18 +122,26 @@ class Drawer:
         """
         x1, y1, x2, y2 = map(int, bbox_xyxy)
 
-        for xoff in self._targets():
+        for xoff in self._resolve_targets(draw_on):
             xx1, xx2 = x1 + xoff, x2 + xoff
             if fill is not None:
-                self._draw.rectangle(
-                    [xx1, y1, xx2, y2], outline=color, width=width, fill=fill
-                )
+                if len(fill) == 4:
+                    self._draw_translucent_rectangle(
+                        bbox=(xx1, y1, xx2, y2),
+                        outline=color,
+                        width=width,
+                        fill=fill,
+                    )
+                else:
+                    self._draw.rectangle(
+                        [xx1, y1, xx2, y2], outline=color, width=width, fill=fill
+                    )
             else:
                 self._draw.rectangle([xx1, y1, xx2, y2], outline=color, width=width)
 
             if label:
                 font = self._get_font()
-                text_w, text_h = self._draw.textbbox((0, 0), label, font=font)[2:]
+                text_w, text_h = self._text_size(label, font)
                 pad = 2
 
                 # TOP по умолчанию
@@ -135,6 +165,230 @@ class Drawer:
                 self._draw.text((tx + pad, ty + pad), label, fill=color, font=font)
 
         return self
+
+    def draw_table_structure(
+        self,
+        table_bbox_xyxy: tuple[int, int, int, int],
+        *,
+        cells: list[Any],
+        label: Optional[str] = None,
+        color: Union[str, tuple[int, int, int]] = "blue",
+        cell_color: Union[str, tuple[int, int, int]] = "cornflowerblue",
+        text_color: Union[str, tuple[int, int, int]] = "black",
+        draw_on: Optional[str] = None,
+    ):
+        """Рисует структуру таблицы и текст по ячейкам.
+
+        Args:
+            table_bbox_xyxy: Габаритный bbox таблицы.
+            cells: Список объектов ячеек с полями bbox и value.
+            label: Подпись таблицы.
+            color: Цвет внешней рамки таблицы.
+            cell_color: Цвет внутренних рамок ячеек.
+            text_color: Цвет текста в ячейках.
+            draw_on: Сторона холста: left, right или both.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        self.draw_structure(
+            table_bbox_xyxy,
+            label=label,
+            color=color,
+            position=0,
+            draw_on=draw_on,
+        )
+
+        for cell in cells:
+            self.draw_structure(
+                cell.bbox.to_tuple(),
+                color=cell_color,
+                width=1,
+                draw_on=draw_on,
+            )
+            if cell.value and cell.value.strip():
+                self.draw_text_in_bbox(
+                    cell.bbox.to_tuple(),
+                    text=cell.value,
+                    fill=text_color,
+                    draw_on=draw_on,
+                )
+
+        return self
+
+    def draw_text_in_bbox(
+        self,
+        bbox_xyxy: tuple[int, int, int, int],
+        *,
+        text: str,
+        fill: Union[str, tuple[int, int, int]] = "black",
+        padding: int = 2,
+        line_spacing: int = 2,
+        draw_on: Optional[str] = None,
+    ):
+        """Рисует текст внутри bbox с переносами и обрезкой по высоте.
+
+        Args:
+            bbox_xyxy: Область для текста в координатах исходного изображения.
+            text: Текст для вывода.
+            fill: Цвет текста.
+            padding: Внутренний отступ.
+            line_spacing: Интервал между строками.
+            draw_on: Сторона холста: left, right или both.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        font = self._get_font()
+        line_height = self._line_height(font)
+        x1, y1, x2, y2 = map(int, bbox_xyxy)
+        max_width = max(1, (x2 - x1) - 2 * padding)
+        max_height = max(1, (y2 - y1) - 2 * padding)
+        wrapped_lines = self._wrap_text(text=text, max_width=max_width, font=font)
+        max_lines = max(1, max_height // max(1, line_height + line_spacing))
+
+        for xoff in self._resolve_targets(draw_on):
+            cursor_y = y1 + padding
+            for line in wrapped_lines[:max_lines]:
+                self._draw.text((x1 + xoff + padding, cursor_y), line, fill=fill, font=font)
+                cursor_y += line_height + line_spacing
+
+        return self
+
+    def _draw_translucent_rectangle(
+        self,
+        *,
+        bbox: tuple[int, int, int, int],
+        outline: Union[str, tuple[int, int, int]],
+        width: int,
+        fill: tuple[int, int, int, int],
+    ) -> None:
+        overlay = Image.new("RGBA", self._canvas.size, (255, 255, 255, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        overlay_draw.rectangle(list(bbox), outline=outline, width=width, fill=fill)
+        self._canvas = Image.alpha_composite(self._canvas.convert("RGBA"), overlay).convert("RGB")
+        self._draw = ImageDraw.Draw(self._canvas)
+
+    def draw_text_panel(
+        self,
+        lines: list[str],
+        *,
+        title: Optional[str] = None,
+        color: Union[str, tuple[int, int, int]] = "black",
+        line_spacing: int = 6,
+        padding: int = 12,
+    ):
+        """Рисует текстовую панель справа от debug-области.
+
+        Args:
+            lines: Строки для вывода.
+            title: Заголовок панели.
+            color: Цвет текста.
+            line_spacing: Дополнительный вертикальный интервал между строками.
+            padding: Внутренний отступ панели.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+
+        Raises:
+            ValueError: Если текстовая панель не включена.
+        """
+        if self._text_panel_width <= 0:
+            raise ValueError("Text panel is disabled. Pass text_panel_width > 0.")
+
+        font = self._get_font()
+        panel_left = self._text_panel_offset
+        panel_right = self._canvas.size[0]
+        max_width = max(1, panel_right - panel_left - 2 * padding)
+        line_height = self._line_height(font)
+        cursor_y = padding
+
+        if title:
+            cursor_y = self._draw_wrapped_text(
+                text=title,
+                x=panel_left + padding,
+                y=cursor_y,
+                max_width=max_width,
+                fill=color,
+                font=font,
+                line_height=line_height,
+                line_spacing=line_spacing,
+            )
+            cursor_y += line_spacing
+
+        for line in lines:
+            cursor_y = self._draw_wrapped_text(
+                text=line,
+                x=panel_left + padding,
+                y=cursor_y,
+                max_width=max_width,
+                fill=color,
+                font=font,
+                line_height=line_height,
+                line_spacing=line_spacing,
+            )
+            cursor_y += line_spacing
+            if cursor_y >= self._canvas.size[1] - padding:
+                break
+
+        return self
+
+    def _draw_wrapped_text(
+        self,
+        *,
+        text: str,
+        x: int,
+        y: int,
+        max_width: int,
+        fill: Union[str, tuple[int, int, int]],
+        font,
+        line_height: int,
+        line_spacing: int,
+    ) -> int:
+        wrapped_lines = self._wrap_text(text=text, max_width=max_width, font=font)
+        cursor_y = y
+
+        for wrapped_line in wrapped_lines:
+            self._draw.text((x, cursor_y), wrapped_line, fill=fill, font=font)
+            cursor_y += line_height + line_spacing
+
+        return cursor_y
+
+    def _wrap_text(self, *, text: str, max_width: int, font) -> list[str]:
+        normalized = " ".join(text.split()) or " "
+        approx_char_width = max(1, self._text_size("M", font)[0])
+        chunk_size = max(1, max_width // approx_char_width)
+        preliminary_lines = wrap(
+            normalized,
+            width=chunk_size,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+
+        lines: list[str] = []
+        for raw_line in preliminary_lines or [normalized]:
+            current = raw_line
+            while current:
+                next_line = current
+                while self._text_size(next_line, font)[0] > max_width:
+                    if len(next_line) == 1:
+                        break
+                    split_at = next_line.rfind(" ")
+                    if split_at <= 0:
+                        next_line = next_line[:-1]
+                    else:
+                        next_line = next_line[:split_at]
+                lines.append(next_line)
+                current = current[len(next_line) :].lstrip()
+
+        return lines
+
+    def _line_height(self, font) -> int:
+        return max(1, self._text_size("Ag", font)[1])
+
+    def _text_size(self, text: str, font) -> tuple[int, int]:
+        left, top, right, bottom = self._draw.textbbox((0, 0), text, font=font)
+        return max(1, right - left), max(1, bottom - top)
 
     def save(self, path: Union[str, Path]):
         Path(path).parent.mkdir(parents=True, exist_ok=True)

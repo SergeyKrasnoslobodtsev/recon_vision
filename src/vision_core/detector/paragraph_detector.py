@@ -1,7 +1,7 @@
 import numpy as np
 from loguru import logger
 from typing import Optional
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import HDBSCAN
 
 from vision_core.entities.paragraph import Paragraph, ParagraphType
 from vision_core.entities.bbox import BBox
@@ -54,7 +54,7 @@ class ParagraphDetector:
             raise ValueError(f"Некорректный image_shape: {image_shape}")
 
         logger.debug(
-            "Начата детекция параграфов для %s OCR-результатов", len(ocr_results)
+            f"Начата детекция параграфов для {len(ocr_results)} OCR-результатов"
         )
 
         clusters = self._clusterize(ocr_results, image_shape)
@@ -76,11 +76,10 @@ class ParagraphDetector:
             paragraphs.append(paragraph)
 
         logger.info(
-            "Обнаружено параграфов: %s (HEADER=%s, FOOTER=%s, TEXT=%s)",
-            len(paragraphs),
-            sum(p.type == ParagraphType.HEADER for p in paragraphs),
-            sum(p.type == ParagraphType.FOOTER for p in paragraphs),
-            sum(p.type == ParagraphType.TEXT for p in paragraphs),
+            f"Обнаружено параграфов: {len(paragraphs)} "
+            f"(HEADER={sum(p.type == ParagraphType.HEADER for p in paragraphs)}, "
+            f"FOOTER={sum(p.type == ParagraphType.FOOTER for p in paragraphs)}, "
+            f"TEXT={sum(p.type == ParagraphType.TEXT for p in paragraphs)})"
         )
         return paragraphs
 
@@ -93,16 +92,17 @@ class ParagraphDetector:
         ocr_results: list[OcrResult],
         image_shape: tuple[int, int],
     ) -> list[list[OcrResult]]:
-        """Кластеризует OCR-боксы через DBSCAN с анизотропной нормализацией.
+        """Кластеризует OCR-боксы через HDBSCAN с анизотропной нормализацией.
 
         Признаки:
-        - Центр bbox (cx, cy).
-        - Высота и ширина bbox.
-        - Левый край x_min (для разделения колонок).
+        - Левый и правый край bbox (x_min, x_max).
+        - Центр строки (cx, cy).
+        - Высота строки.
+        - Уверенность OCR как слабый дополнительный сигнал.
 
         Нормализация:
-        - Вертикальная ось: делим на медианную высоту строки.
-        - Горизонтальная ось: делим на 10% ширины страницы (эвристика для колонок).
+        - Горизонтальные признаки: делим на 10% ширины страницы.
+        - Вертикальные признаки: делим на медианную высоту строки.
 
         Args:
             ocr_results: Список OCR-строк.
@@ -119,16 +119,13 @@ class ParagraphDetector:
             return [[item] for item in ocr_results]
 
         logger.debug(
-            "Нормализация: scale_y (медиана высоты)=%.2f, scale_x (0.1*ширина страницы)=%.2f",
-            scale_y,
-            scale_x,
+            f"Нормализация: scale_y (медиана высоты)={scale_y:.2f}, scale_x (0.1*ширина страницы)={scale_x:.2f}"
         )
 
-        clustering = DBSCAN(
-            eps=4.2,
-            min_samples=self.cfg.min_cluster_size,
+        clustering = HDBSCAN(
+            copy=False,
+            min_cluster_size=self.cfg.min_cluster_size,
             metric="euclidean",
-            algorithm="kd_tree",
         ).fit(features)
 
         labels = clustering.labels_
@@ -144,7 +141,7 @@ class ParagraphDetector:
             else:
                 result.append(cluster)
 
-        logger.debug("DBSCAN: обнаружено %s кластеров (вкл. шум)", len(result))
+        logger.debug(f"DBSCAN: обнаружено {len(result)} кластеров (вкл. шум)")
         return result
 
     def _build_features(
@@ -155,35 +152,36 @@ class ParagraphDetector:
         """Строит матрицу признаков с анизотропной нормализацией.
 
         Вектор признаков на строку:
-        [cx_norm, cy_norm, w_norm, h_norm, x_min_norm],
+        [x_min_norm, x_max_norm, cx_norm, cy_norm, h_norm, confidence],
         где:
-        - cx_norm, x_min_norm, w_norm нормированы на scale_x = 0.1 * image_width;
-        - cy_norm, h_norm нормированы на scale_y = медиана высоты строки.
+        - x_min_norm и x_max_norm отражают геометрию левого и правого края строки;
+        - cx_norm и cy_norm отражают положение центра строки;
+        - h_norm отражает вертикальную близость строк через масштаб высоты;
+        - confidence оставляется ненормализованным как слабый вспомогательный признак.
 
         Args:
             ocr_results: Список OCR-строк.
             image_shape: (height, width) изображения.
 
         Returns:
-            np.ndarray: Матрица признаков формы (n, 5).
+            np.ndarray: Матрица признаков формы (n, 6).
             float: scale_y (медиана высоты строки).
             float: scale_x (эвристика для горизонтали).
         """
         if not ocr_results:
-            return np.empty((0, 5), dtype=float), 0.0, 0.0
+            return np.empty((0, 6), dtype=float), 0.0, 0.0
 
-        image_height, image_width = image_shape
+        _, image_width = image_shape
         heights: list[float] = []
         rows: list[list[float]] = []
 
         for item in ocr_results:
             x_min, y_min, x_max, y_max = item.bbox
-            w = max(0.0, x_max - x_min)
             h = max(0.0, y_max - y_min)
             cx = (x_min + x_max) / 2.0
             cy = (y_min + y_max) / 2.0
             heights.append(h)
-            rows.append([cx, cy, w, h, x_min])
+            rows.append([x_min, x_max, cx, cy, h, item.confidence])
 
         median_h = float(np.median(heights)) if heights else 1.0
         scale_y = median_h if median_h > 0 else 1.0
@@ -192,9 +190,9 @@ class ParagraphDetector:
         scale_x = 0.1 * image_width if image_width > 0 else 1.0
 
         features = np.array(rows, dtype=float)
-        # Нормализация: [0,2,4] — горизонтальные, [1,3] — вертикальные
-        features[:, [0, 2, 4]] /= scale_x
-        features[:, [1, 3]] /= scale_y
+        # Учитываем и границы, и центр строки, чтобы лучше различать выравнивание абзацев.
+        features[:, [0, 1, 2]] /= scale_x
+        features[:, [3, 4]] /= scale_y
 
         return features, scale_y, scale_x
 
@@ -252,7 +250,7 @@ class ParagraphDetector:
             root = find(idx)
             merged.setdefault(root, []).extend(cluster)
 
-        logger.debug("Слияние вложенных: %s → %s кластеров", len(clusters), len(merged))
+        logger.debug(f"Слияние вложенных: {len(clusters)} -> {len(merged)} кластеров")
         return [merged[key] for key in sorted(merged.keys())]
 
     def _cluster_bbox(self, cluster: list[OcrResult]) -> BBox:
@@ -310,10 +308,10 @@ class ParagraphDetector:
         """Классифицирует параграф по положению и относительному размеру.
 
         Логика:
-        - Если параграф большой (> 60% ширины и > 40% высоты) → TEXT.
-        - Если в верхних 15% страницы → HEADER.
-        - Если в нижних 15% страницы → FOOTER.
-        - Иначе → TEXT.
+        - Если параграф большой (> 60% ширины и > 40% высоты) -> TEXT.
+        - Если в верхних 15% страницы -> HEADER.
+        - Если в нижних 15% страницы -> FOOTER.
+        - Иначе -> TEXT.
 
         Args:
             paragraph: Параграф для классификации.
