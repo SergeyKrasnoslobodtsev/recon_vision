@@ -68,7 +68,18 @@ _DEFAULT_MODELS_DIR = _PROJECT_ROOT / "models"
 
 @dataclass
 class PaddleOcrConfig:
-    """Конфигурация для PaddleOCR."""
+    """Конфигурация для PaddleOCR.
+    
+    Attributes:
+        text_recognition_model_name: Название модели для распознавания текста
+        text_recognition_model_dir: Директория с моделью для распознавания текста
+        text_detection_model_name: Название модели для детекции текста
+        text_detection_model_dir: Директория с моделью для детекции текста
+        use_doc_orientation_classify: Использовать ли классификатор ориентации документа
+        use_doc_unwarping: Использовать ли распрямление документа
+        use_textline_orientation: Использовать ли классификатор ориентации текстовой строки
+        device: Устройство для выполнения модели (cpu или gpu)
+    """
 
     text_recognition_model_name: str = "cyrillic_PP-OCRv5_mobile_rec"
     text_recognition_model_dir: str = str(
@@ -87,20 +98,9 @@ class ParagraphDetectorConfig:
     """Конфигурация детектора параграфов.
 
     Attributes:
-        vertical_spacing_factor: Множитель высоты строки для определения межстрочного расстояния (eps для DBSCAN).
-        min_cluster_size: Минимальное количество строк в параграфе.
-        stamp_area_threshold: Порог площади для фильтрации штампов (доля от площади изображения).
-        column_gap_threshold: Минимальный горизонтальный разрыв для детекции колонок (в пикселях).
-        indent_margin: Допуск для определения одинакового отступа (в пикселях).
-        grid_variance_threshold: Порог дисперсии расстояний между колонками для детекции text-based таблиц.
+        min_cluster_size: Минимальный размер кластера для объединения выделенных слов в параграф
     """
-
-    vertical_spacing_factor: float = 2.0
-    min_cluster_size: int = 4
-    stamp_area_threshold: float = 0.25
-    column_gap_threshold: int = 50
-    indent_margin: int = 10
-    grid_variance_threshold: float = 100.0
+    min_cluster_size: int = 3
 
 
 @dataclass
