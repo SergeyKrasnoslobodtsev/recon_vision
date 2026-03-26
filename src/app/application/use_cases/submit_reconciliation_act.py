@@ -10,6 +10,7 @@ from app.application.dto.submit_reconciliation_act import (
 )
 from app.application.ports.document_builder import DocumentBuilder
 from app.application.ports.process_repository import ProcessRepository
+from app.application.ports.semantic_input_projector import SemanticInputProjector
 from app.application.ports.structured_data_extractor import StructuredDataExtractor
 from app.domain.entities.process import ProcessState
 
@@ -21,10 +22,12 @@ class SubmitReconciliationActUseCase:
         self,
         process_repository: ProcessRepository,
         document_builder: DocumentBuilder,
+        semantic_input_projector: SemanticInputProjector,
         structured_data_extractor: StructuredDataExtractor,
     ):
         self.process_repository = process_repository
         self.document_builder = document_builder
+        self.semantic_input_projector = semantic_input_projector
         self.structured_data_extractor = structured_data_extractor
 
     async def execute(
@@ -55,8 +58,9 @@ class SubmitReconciliationActUseCase:
 
         try:
             document_payload = await self.document_builder.build(pdf_bytes)
+            semantic_input = await self.semantic_input_projector.build(document_payload)
             reconciliation_data = await self.structured_data_extractor.extract(
-                document_payload
+                semantic_input
             )
 
             process_state.document_payload = document_payload

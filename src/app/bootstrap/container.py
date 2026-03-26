@@ -14,6 +14,9 @@ from app.application.use_cases.submit_reconciliation_act import (
 )
 from app.infrastructure.services.document_builder import VisionDocumentBuilder
 from app.infrastructure.services.pdf_filler import DocumentPdfFiller
+from app.infrastructure.services.semantic_input_projector import (
+    DocumentSemanticInputProjector,
+)
 from app.infrastructure.services.structured_data_extractor import (
     StubStructuredDataExtractor,
 )
@@ -39,6 +42,7 @@ def create_container(process_repository: ProcessRepository) -> ApplicationContai
         ApplicationContainer: Собранный контейнер зависимостей.
     """
     document_builder = VisionDocumentBuilder()
+    semantic_input_projector = DocumentSemanticInputProjector()
     structured_data_extractor = StubStructuredDataExtractor()
     pdf_filler = DocumentPdfFiller()
 
@@ -47,6 +51,7 @@ def create_container(process_repository: ProcessRepository) -> ApplicationContai
         submit_reconciliation_act=SubmitReconciliationActUseCase(
             process_repository=process_repository,
             document_builder=document_builder,
+            semantic_input_projector=semantic_input_projector,
             structured_data_extractor=structured_data_extractor,
         ),
         get_process_status=GetProcessStatusUseCase(

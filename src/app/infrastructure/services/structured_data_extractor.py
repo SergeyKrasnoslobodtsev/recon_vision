@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
+from app.application.dto.semantic_input import SemanticInput
 from app.domain.entities.reconciliation_data import ReconciliationData
 from app.domain.value_objects.period import Period
 
@@ -11,25 +10,20 @@ from app.domain.value_objects.period import Period
 class StubStructuredDataExtractor:
     """Возвращает временный результат извлечения, пока semantic-слой не реализован."""
 
-    async def extract(self, document_payload: Any) -> ReconciliationData:
-        """Извлекает временные данные из построенного документа.
+    async def extract(self, semantic_input: SemanticInput) -> ReconciliationData:
+        """Извлекает временные данные из semantic input.
 
         Args:
-            document_payload: Каноническое представление документа.
+            semantic_input: Нормализованный вход semantic analysis.
 
         Returns:
             ReconciliationData: Временный результат извлечения.
         """
-        metadata = (
-            document_payload.get("metadata", {})
-            if isinstance(document_payload, dict)
-            else {}
-        )
         return ReconciliationData(
             seller="",
             buyer="",
             period=Period(),
             debit=[],
             credit=[],
-            message=metadata.get("message", "done"),
+            message=semantic_input.document_metadata.get("message", "done"),
         )
