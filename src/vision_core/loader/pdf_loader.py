@@ -4,6 +4,7 @@ from PIL import Image
 import cv2
 
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.config import ImagePreprocessorConfig
 
 
 class PDFLoader:
@@ -18,7 +19,7 @@ class PDFLoader:
         """
         self.pdf_bytes = pdf_bytes
         self.doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        self.preprocessor = ImagePreprocessor()
+        self.preprocessor = ImagePreprocessor(ImagePreprocessorConfig())
 
     @property
     def num_pages(self) -> int:
@@ -41,7 +42,7 @@ class PDFLoader:
         pix = page.get_pixmap(dpi=dpi, alpha=False)
 
         # Конвертируем в numpy array (RGB)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+        img = pix.pil_image()
         img_np = np.array(img)
 
         img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)

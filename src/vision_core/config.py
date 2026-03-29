@@ -2,6 +2,25 @@ from dataclasses import dataclass, field
 from typing import Optional
 from pathlib import Path
 
+@dataclass
+class ImagePreprocessorConfig:
+
+    """Конфигурация для препроцессинга изображений перед распознаванием текста
+
+    Attributes:
+        denoise_h: Параметр для удаления шума чем выше, тем сильнее удаление (0 - без удаления, 3-5 - легкое удаление)
+        clip_limit: Порог для контрастного ограничителя CLAHE (1.0 - без усиления, 2.0 - сильное усиление)
+        tile_size: Размер тайла для CLAHE (меньше - более локальный контраст)
+        kernel_size: Размер ядра для морфологических операций для усиления светлых штрихов (3-5 обычно достаточно)
+        blackhat_gain: Коэффициент усиления для операции blackhat (0.2-0.3 может помочь, но зависит от качества скана)
+        kernel_size_morph: Размер ядра для морфологических операций для оценки фона (обычно 21)
+    """
+    denoise_h: int = 3
+    clip_limit: float = 1.9
+    tile_size: int = 8
+    kernel_size: int = 5
+    blackhat_gain: float = 0.3
+    kernel_size_morph: int = 21
 
 @dataclass
 class TableDetectorConfig:
