@@ -1,12 +1,13 @@
+from typing import Optional
+
 import numpy as np
 from loguru import logger
-from typing import Optional
 from sklearn.cluster import HDBSCAN
 
-from vision_core.entities.paragraph import Paragraph, ParagraphType
-from vision_core.entities.bbox import BBox
-from vision_core.ocr.base import OcrResult
 from vision_core.config import ParagraphDetectorConfig
+from vision_core.entities.bbox import BBox
+from vision_core.entities.paragraph import Paragraph, ParagraphType
+from vision_core.ocr.base import OcrResult
 
 
 class ParagraphDetector:

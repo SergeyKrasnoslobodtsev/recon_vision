@@ -1,6 +1,8 @@
+from typing import Optional, Union
+
 from pydantic import BaseModel
+
 from .bbox import BBox
-from typing import Union, Optional
 
 
 class Cell(BaseModel):

@@ -1,5 +1,5 @@
-import numpy as np
 import cv2
+import numpy as np
 
 from vision_core.entities.bbox import BBox
 

@@ -1,5 +1,7 @@
-from pydantic import BaseModel
 import enum
+
+from pydantic import BaseModel
+
 from .bbox import BBox
 
 

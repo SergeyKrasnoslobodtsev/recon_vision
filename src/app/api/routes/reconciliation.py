@@ -10,8 +10,7 @@ from app.api.dependencies import (
     get_submit_reconciliation_act_use_case,
 )
 from app.api.schemas.act_entry import ActEntryRequest, ActEntryResponse, RowId
-from app.api.schemas.process_status import ProcessIdResponse, StatusResponse
-from app.api.schemas.process_status import GetProcessStatusRequest
+from app.api.schemas.process_status import GetProcessStatusRequest, ProcessIdResponse, StatusResponse
 from app.api.schemas.reconciliation import (
     FillReconciliationActRequest,
     PeriodResponse,
@@ -118,9 +117,7 @@ def _failed_response(message: str) -> JSONResponse:
 )
 async def send_reconciliation_act(
     request: ReconciliationAct,
-    use_case: SubmitReconciliationActUseCase = Depends(
-        get_submit_reconciliation_act_use_case
-    ),
+    use_case: SubmitReconciliationActUseCase = Depends(get_submit_reconciliation_act_use_case),
 ):
     """Принимает акт сверки на обработку.
 
@@ -129,9 +126,7 @@ async def send_reconciliation_act(
     """
     logger.info("Sending reconciliation act...")
     try:
-        result = await use_case.execute(
-            SubmitReconciliationActCommand(document_base64=request.document)
-        )
+        result = await use_case.execute(SubmitReconciliationActCommand(document_base64=request.document))
         return ProcessIdResponse(process_id=result.process_id)
     except ValueError as exc:
         payload = StatusResponse(status=-2, message=str(exc))
@@ -142,7 +137,6 @@ async def send_reconciliation_act(
     except Exception as exc:
         logger.exception("Ошибка отправки акта сверки")
         return _failed_response(str(exc))
-
 
 
 @router.post(
@@ -161,9 +155,7 @@ async def get_process_status(
     """Возвращает статус процесса обработки акта сверки."""
     logger.info("Getting process status...")
     try:
-        result = await use_case.execute(
-            GetProcessStatusCommand(process_id=request.process_id)
-        )
+        result = await use_case.execute(GetProcessStatusCommand(process_id=request.process_id))
     except ProcessNotFoundError:
         return _not_found_response()
     except Exception as exc:
@@ -198,9 +190,7 @@ async def get_process_status(
 )
 async def fill_reconciliation_act(
     request: FillReconciliationActRequest,
-    use_case: FillReconciliationActUseCase = Depends(
-        get_fill_reconciliation_act_use_case
-    ),
+    use_case: FillReconciliationActUseCase = Depends(get_fill_reconciliation_act_use_case),
 ):
     """Принимает команду на заполнение акта сверки.
 

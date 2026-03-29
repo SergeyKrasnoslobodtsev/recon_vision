@@ -34,7 +34,7 @@ class Document(BaseModel):
         pdf_bytes: bytes,
         pages: list[Page],
         metadata: dict[str, Any] | None = None,
-    ) -> "Document":
+    ) -> Document:
         """Создаёт документ из PDF-байтов и набора страниц.
 
         Args:

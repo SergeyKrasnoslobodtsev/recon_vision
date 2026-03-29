@@ -1,12 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+
 from app.api.routes.api import router as api_router
 from app.api.routes.docs import create_docs_router
 from app.bootstrap.lifespan import create_lifespan
 from app.infrastructure.config.settings import get_settings
 from app.infrastructure.logging.setup import configure_logging
-
 
 settings = get_settings()
 configure_logging(settings.logging_level)

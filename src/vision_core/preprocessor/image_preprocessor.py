@@ -1,7 +1,8 @@
 from typing import Optional
 
-import numpy as np
 import cv2
+import numpy as np
+
 from vision_core.config import ImagePreprocessorConfig
 
 
@@ -18,7 +19,12 @@ class ImagePreprocessor:
         Returns:
             enhanced_image: Улучшенное изображение
         """
-        normalized, _ = self._normalize_background(image, kernel_size=self.cfg.kernel_size_morph)
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+
+        normalized, _ = self._normalize_background(gray, kernel_size=self.cfg.kernel_size_morph)
         processed = self._darken_light_strokes(
             normalized,
             denoise_h=self.cfg.denoise_h,
@@ -66,9 +72,9 @@ class ImagePreprocessor:
         return result
 
     def _clahe_soft(
-        self, 
-        gray: np.ndarray, 
-        clip_limit: float = 1.8, 
+        self,
+        gray: np.ndarray,
+        clip_limit: float = 1.8,
         tile_size: int = 8,
     ) -> np.ndarray:
         """Применяет CLAHE (Contrast Limited Adaptive Histogram Equalization) для улучшения контраста.

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from app.application.errors import ProcessNotFoundError
 from app.application.dto.get_process_status import (
     GetProcessStatusCommand,
     GetProcessStatusResult,
 )
+from app.application.errors import ProcessNotFoundError
 from app.application.ports.process_repository import ProcessRepository
 
 

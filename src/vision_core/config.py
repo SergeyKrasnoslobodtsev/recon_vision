@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
-from typing import Optional
 from pathlib import Path
+from typing import Optional
+
 
 @dataclass
 class ImagePreprocessorConfig:
-
     """Конфигурация для препроцессинга изображений перед распознаванием текста
 
     Attributes:
@@ -15,12 +15,14 @@ class ImagePreprocessorConfig:
         blackhat_gain: Коэффициент усиления для операции blackhat (0.2-0.3 может помочь, но зависит от качества скана)
         kernel_size_morph: Размер ядра для морфологических операций для оценки фона (обычно 21)
     """
+
     denoise_h: int = 3
     clip_limit: float = 1.9
     tile_size: int = 8
     kernel_size: int = 5
     blackhat_gain: float = 0.3
     kernel_size_morph: int = 21
+
 
 @dataclass
 class TableDetectorConfig:
@@ -88,7 +90,7 @@ _DEFAULT_MODELS_DIR = _PROJECT_ROOT / "models"
 @dataclass
 class PaddleOcrConfig:
     """Конфигурация для PaddleOCR.
-    
+
     Attributes:
         text_recognition_model_name: Название модели для распознавания текста
         text_recognition_model_dir: Директория с моделью для распознавания текста
@@ -101,9 +103,7 @@ class PaddleOcrConfig:
     """
 
     text_recognition_model_name: str = "cyrillic_PP-OCRv5_mobile_rec"
-    text_recognition_model_dir: str = str(
-        _DEFAULT_MODELS_DIR / "cyrillic_PP-OCRv5_mobile_rec"
-    )
+    text_recognition_model_dir: str = str(_DEFAULT_MODELS_DIR / "cyrillic_PP-OCRv5_mobile_rec")
     text_detection_model_name: str = "PP-OCRv5_server_det"
     text_detection_model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-OCRv5_server_det")
     use_doc_orientation_classify: bool = False
@@ -119,6 +119,7 @@ class ParagraphDetectorConfig:
     Attributes:
         min_cluster_size: Минимальный размер кластера для объединения выделенных слов в параграф
     """
+
     min_cluster_size: int = 3
 
 
@@ -127,33 +128,20 @@ class VisionCoreConfig:
     """Общая конфигурация для распознавания таблиц"""
 
     table_detector: TableDetectorConfig = field(default_factory=TableDetectorConfig)
-    cell_detector: TableCellDetectorConfig = field(
-        default_factory=TableCellDetectorConfig
-    )
-    table_preprocessor: TablePreprocessorConfig = field(
-        default_factory=TablePreprocessorConfig
-    )
+    cell_detector: TableCellDetectorConfig = field(default_factory=TableCellDetectorConfig)
+    table_preprocessor: TablePreprocessorConfig = field(default_factory=TablePreprocessorConfig)
 
     paddleocr: PaddleOcrConfig = field(default_factory=PaddleOcrConfig)
 
-    paragraph_detector: ParagraphDetectorConfig = field(
-        default_factory=ParagraphDetectorConfig
-    )
+    paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":
         """Создание из словаря (для загрузки из JSON/YAML)"""
         return cls(
             table_detector=TableDetectorConfig(**config_dict.get("table_detector", {})),
-            cell_detector=TableCellDetectorConfig(
-                **config_dict.get("cell_detector", {})
-            ),
-            table_preprocessor=TablePreprocessorConfig(
-                **config_dict.get("table_preprocessor", {})
-            ),
+            cell_detector=TableCellDetectorConfig(**config_dict.get("cell_detector", {})),
+            table_preprocessor=TablePreprocessorConfig(**config_dict.get("table_preprocessor", {})),
             paddleocr=PaddleOcrConfig(**config_dict.get("paddleocr", {})),
-            paragraph_detector=ParagraphDetectorConfig(
-                **config_dict.get("paragraph_detector", {})
-            ),
+            paragraph_detector=ParagraphDetectorConfig(**config_dict.get("paragraph_detector", {})),
         )
-

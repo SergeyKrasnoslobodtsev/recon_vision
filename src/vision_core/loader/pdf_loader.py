@@ -1,10 +1,9 @@
-import pymupdf
-import numpy as np
-from PIL import Image
 import cv2
+import numpy as np
+import pymupdf
 
-from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.config import ImagePreprocessorConfig
+from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 
 
 class PDFLoader:

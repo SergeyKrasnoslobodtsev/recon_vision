@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import base64
 
+from app.application.dto.fill_reconciliation_act import (
+    FillReconciliationActCommand,
+    FillReconciliationActResult,
+)
 from app.application.errors import (
     ProcessFailedError,
     ProcessNotFoundError,
     ProcessNotReadyError,
-)
-from app.application.dto.fill_reconciliation_act import (
-    FillReconciliationActCommand,
-    FillReconciliationActResult,
 )
 from app.application.ports.pdf_filler import PdfFiller
 from app.application.ports.process_repository import ProcessRepository

@@ -1,7 +1,9 @@
-from pydantic import BaseModel
 from functools import cached_property
-from .cell import Cell
+
+from pydantic import BaseModel
+
 from .bbox import BBox
+from .cell import Cell
 
 
 class Table(BaseModel):

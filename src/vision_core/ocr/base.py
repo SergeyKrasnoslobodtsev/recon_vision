@@ -1,6 +1,7 @@
-from dataclasses import dataclass
 import enum
+from dataclasses import dataclass
 from typing import Protocol, Union
+
 import numpy as np
 
 

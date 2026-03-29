@@ -1,17 +1,18 @@
-import numpy as np
-import cv2
+from typing import Optional
 
+import cv2
+import numpy as np
+from loguru import logger
+
+from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.detector.table_detector import TableDetector
 from vision_core.entities.bbox import BBox
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
+from vision_core.observer import PipelineObserver
+from vision_core.ocr.paddle_ocr import OcrResult, PaddleOcrEngine
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.detector.paragraph_detector import ParagraphDetector
-from vision_core.ocr.paddle_ocr import PaddleOcrEngine, OcrResult
-
-from typing import Optional
-from loguru import logger
 
 
 class PageAnalyzer:
@@ -38,6 +39,7 @@ class PageAnalyzer:
         table_detector: Optional[TableDetector] = None,
         paragraph_detector: Optional[ParagraphDetector] = None,
         ocr_engine: Optional[PaddleOcrEngine] = None,
+        observer: Optional[PipelineObserver] = None,
     ):
         """Инициализирует анализатор страницы с возможностью внедрения зависимостей.
 
@@ -52,14 +54,17 @@ class PageAnalyzer:
                 По умолчанию создаётся экземпляр ParagraphDetector.
             ocr_engine: OCR движок.
                 По умолчанию создаётся экземпляр PaddleOcrEngine.
+            observer: Наблюдатель pipeline для debug-визуализации.
+                Если None — визуализация отключена, ноль overhead.
         """
         self.image_preprocessor = image_preprocessor or ImagePreprocessor()
         self.ocr_engine = ocr_engine or PaddleOcrEngine()
         self.paragraph_preprocessor = paragraph_preprocessor or ParagraphPreprocessor()
         self.table_detector = table_detector or TableDetector()
         self.paragraph_detector = paragraph_detector or ParagraphDetector()
+        self.observer = observer
 
-    def analyze_page(self, image: np.ndarray) -> Page:
+    def analyze_page(self, image: np.ndarray, *, page_number: int = 0) -> Page:
         """Анализирует изображение страницы и извлекает структурированные данные.
 
         Последовательность обработки:
@@ -70,6 +75,7 @@ class PageAnalyzer:
 
         Args:
             image: Изображение страницы в формате numpy array (BGR или RGB).
+            page_number: Номер страницы (для observer).
 
         Returns:
             Объект Page с распознанными таблицами, абзацами и метаданными.
@@ -78,6 +84,11 @@ class PageAnalyzer:
             Обработка абзацев пока не реализована (TODO #124).
         """
         processed_image = self._preprocess_image(image)
+
+        if self.observer is not None:
+            self.observer.on_side_by_side(
+                image, processed_image, stage="preprocessing", page_number=page_number,
+            )
 
         tables = self._detect_tables(processed_image)
 

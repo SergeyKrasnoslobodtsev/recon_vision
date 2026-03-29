@@ -1,9 +1,11 @@
-from vision_core.ocr.base import OcrEngine, OcrResult
-from vision_core.config import VisionCoreConfig
-from paddleocr import PaddleOCR
 from pathlib import Path
+from typing import Optional, Union
+
 import numpy as np
-from typing import Union, Optional
+from paddleocr import PaddleOCR
+
+from vision_core.config import VisionCoreConfig
+from vision_core.ocr.base import OcrEngine, OcrResult
 
 
 class PaddleOcrEngine(OcrEngine):

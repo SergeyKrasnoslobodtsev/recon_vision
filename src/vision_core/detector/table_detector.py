@@ -1,12 +1,14 @@
-import numpy as np
-import cv2
 from typing import Optional
+
+import cv2
+import numpy as np
+from loguru import logger
+
+from vision_core.config import VisionCoreConfig
+from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.entities.bbox import BBox
 from vision_core.entities.table import Table
-from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.config import VisionCoreConfig
-from loguru import logger
 
 
 class TableDetector:

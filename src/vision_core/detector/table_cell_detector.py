@@ -1,9 +1,11 @@
+from typing import Optional
+
 import cv2
 import numpy as np
-from typing import Optional
+
+from vision_core.config import TableCellDetectorConfig
 from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
-from vision_core.config import TableCellDetectorConfig
 
 
 class TableCellDetector:

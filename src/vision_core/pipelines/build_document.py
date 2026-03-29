@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from vision_core.analizer.page_analyzer import PageAnalyzer
 from vision_core.entities.document import Document
 from vision_core.entities.page import Page
@@ -20,7 +18,7 @@ class DocumentBuildPipeline:
 
     def __init__(
         self,
-        page_analyzer: Optional[PageAnalyzer] = None,
+        page_analyzer: PageAnalyzer | None = None,
         dpi: int = 300,
     ):
         """Инициализирует pipeline построения документа.
@@ -46,7 +44,10 @@ class DocumentBuildPipeline:
         with PDFLoader(pdf_bytes) as loader:
             for page_number in range(loader.num_pages):
                 image = loader.get_page_image(page_number, dpi=self.dpi)
-                analyzed_page = self.page_analyzer.analyze_page(image)
+                analyzed_page = self.page_analyzer.analyze_page(
+                    image,
+                    page_number=page_number,
+                )
                 analyzed_page.page_number = page_number
                 analyzed_page.metadata.update(
                     {
