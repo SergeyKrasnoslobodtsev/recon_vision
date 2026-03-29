@@ -1,9 +1,10 @@
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-from typing import Any, Union, Optional
 from enum import Enum
 from pathlib import Path
 from textwrap import wrap
+from typing import Any, Optional, Union
+
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 
 class Position(Enum):
@@ -389,6 +390,34 @@ class Drawer:
     def _text_size(self, text: str, font) -> tuple[int, int]:
         left, top, right, bottom = self._draw.textbbox((0, 0), text, font=font)
         return max(1, right - left), max(1, bottom - top)
+
+    def draw_processed(self, processed: Union[np.ndarray, "Image.Image"]):
+        """Вставляет обработанное изображение в правую часть side-by-side холста.
+
+        Args:
+            processed: Обработанное изображение для вставки справа.
+
+        Raises:
+            ValueError: Если режим side_by_side не включён.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        if not self._side_by_side:
+            raise ValueError("draw_processed доступен только в режиме side_by_side=True")
+
+        if isinstance(processed, np.ndarray):
+            img = Image.fromarray(processed)
+        else:
+            img = processed
+
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        img = img.resize(self._left.size, Image.LANCZOS)
+        self._canvas.paste(img, (self._x_right_offset, 0))
+        self._draw = ImageDraw.Draw(self._canvas)
+        return self
 
     def save(self, path: Union[str, Path]):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
