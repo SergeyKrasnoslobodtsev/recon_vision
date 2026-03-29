@@ -1,9 +1,10 @@
+from typing import Optional
+
 import cv2
 import numpy as np
-from typing import Optional
-from vision_core.config import TablePreprocessorConfig
-
 from loguru import logger
+
+from vision_core.config import TablePreprocessorConfig
 
 
 class TablePreprocessor:
