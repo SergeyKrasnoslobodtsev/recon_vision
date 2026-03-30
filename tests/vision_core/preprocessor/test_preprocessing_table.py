@@ -1,12 +1,13 @@
-import pytest
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pytest
 from loguru import logger
-from vision_core import observer
+
+from vision_core.config import TablePreprocessorConfig
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.config import TablePreprocessorConfig
-from vision_core.debug_observer import DebugObserver
 
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
 
@@ -23,7 +24,7 @@ class TestPreprocessingTable:
         preprocessor_table: TablePreprocessor,
     ):
         """Тестирует детекцию линий на изображении"""
-        observer = DebugObserver(output_dir=output_dir)
+        observer = DebugImageObserver(output_dir=output_dir)
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
 
@@ -54,9 +55,13 @@ class TestPreprocessingTable:
                 orientation="vertical",
             )
             mask = h_lines + v_lines
-            
-            observer.on_side_by_side(
-                original, mask, stage="table_lines_detection", prefix=f"{test_file.stem}", page_number=0,
+
+            observer.on_debug_image(
+                original,
+                mask,
+                stage="table_lines_detection",
+                prefix=f"{test_file.stem}",
+                page_number=0,
             )
         logger.success("Тест детекции линий пройден успешно")
 
@@ -70,7 +75,7 @@ class TestPreprocessingTable:
     ):
         """Тестирует создание маски таблиц на изображении"""
 
-        observer = DebugObserver(output_dir=output_dir)
+        observer = DebugImageObserver(output_dir=output_dir)
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -88,8 +93,12 @@ class TestPreprocessingTable:
             processed = preprocessor_img.process(original)
 
             table_mask = preprocessor_table.create_table_mask(processed)
-            observer.on_side_by_side(
-                original, table_mask, stage="table_mask_creation", prefix=f"{test_file.stem}", page_number=0,
+            observer.on_debug_image(
+                original,
+                table_mask,
+                stage="table_mask_creation",
+                prefix=f"{test_file.stem}",
+                page_number=0,
             )
 
         logger.success("Тест создания маски таблиц пройден успешно")

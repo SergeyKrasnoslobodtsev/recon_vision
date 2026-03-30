@@ -1,11 +1,13 @@
-import pytest
 from pathlib import Path
-from loguru import logger
+
 import numpy as np
+import pytest
+from loguru import logger
+
+from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.detector.table_detector import TableDetector
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.utils.drawer import Drawer
 
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
 
@@ -23,6 +25,8 @@ class TestTableDetector:
         table_detector: TableDetector,
     ):
         """Тестирует детекцию таблиц на изображении"""
+
+        observer = DebugImageObserver(output_dir=output_dir)
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -44,16 +48,14 @@ class TestTableDetector:
 
             bboxes = table_detector.extract_raw_tables(mask_table)
 
-            debug_image = original.copy()
-            drawer = Drawer(debug_image, side_by_side=True)
-            for i, bbox in enumerate(bboxes):
-                drawer.draw_structure(
-                    bbox.to_tuple(),
-                    label=f"Table {i + 1}",
-                    color="blue",
-                    position=0,
-                )
-            drawer.save(output_dir / f"detected_tables_{test_file.stem}.png")
+            observer.on_labeled_boxes(
+                original,
+                items=[(bbox.to_tuple(), f"Table {index}") for index, bbox in enumerate(bboxes, start=1)],
+                stage="detected_tables",
+                prefix=test_file.stem,
+                page_number=0,
+                color="blue",
+            )
 
     def test_extract_tables(
         self,
@@ -64,6 +66,8 @@ class TestTableDetector:
         table_detector: TableDetector,
     ):
         """Тестирует детекцию таблиц на изображении"""
+
+        observer = DebugImageObserver(output_dir=output_dir)
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -83,26 +87,20 @@ class TestTableDetector:
 
             tables = table_detector.detect_tables(processed_img)
 
-            debug_image = original.copy()
-
-            drawer = Drawer(debug_image, side_by_side=True)
-
             if not tables:
                 logger.warning(f"Таблицы не найдены в файле: {test_file.name}")
-                # debug_image.save(output_dir / f"no_tables_{test_file.stem}.png")
             else:
-                for i, table in enumerate(tables):
-                    drawer.draw_structure(
-                        table.bbox.to_tuple(),
-                        label=f"Table {i + 1}",
-                        color="blue",
-                        position=0,
-                    )
+                items: list[tuple[tuple[int, int, int, int], str]] = []
+                for index, table in enumerate(tables, start=1):
+                    items.append((table.bbox.to_tuple(), f"Table {index}"))
                     for cell in table.cells:
-                        drawer.draw_structure(
-                            cell.bbox.to_tuple(),
-                            label=f"R{cell.row}C{cell.col}S{cell.colspan}",
-                            color="darkgreen",
-                            position=0,
-                        )
-            drawer.save(output_dir / f"detected_tables_struct_{test_file.stem}.png")
+                        items.append((cell.bbox.to_tuple(), f"R{cell.row}C{cell.col}S{cell.colspan}"))
+
+                observer.on_labeled_boxes(
+                    original,
+                    items=items,
+                    stage="detected_tables_struct",
+                    prefix=test_file.stem,
+                    page_number=0,
+                    color="blue",
+                )

@@ -1,7 +1,7 @@
 from enum import Enum
 from pathlib import Path
 from textwrap import wrap
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -14,12 +14,11 @@ class Position(Enum):
 
 
 class Drawer:
-    """
-    Drawer, упрощающий отрисовку боксов/подписей в тестах.
+    """Рисует debug-структуры поверх изображения или рядом с ним.
 
-    Новый режим:
-            side_by_side=True -> итоговое изображение: [original | blank], рисование по умолчанию на blank (справа).
-            text_panel_width > 0 -> добавляет отдельную текстовую панель справа от debug-области.
+    Side-by-side режим создаёт холст вида [source | debug].
+    Все отладочные аннотации по умолчанию рисуются на правой части.
+    При text_panel_width > 0 справа добавляется отдельная текстовая панель.
     """
 
     _FONT_CANDIDATES = (
@@ -75,6 +74,44 @@ class Drawer:
         self._draw = ImageDraw.Draw(self._canvas)
         self._font = None
 
+    def draw_side_by_side_image(self, image: np.ndarray | Image.Image):
+        """Вставляет изображение в правую часть side-by-side холста.
+
+        Args:
+            image: Изображение для вставки в debug-область справа.
+
+        Raises:
+            ValueError: Если режим side_by_side не включён.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        if not self._side_by_side:
+            raise ValueError("draw_side_by_side_image доступен только в режиме side_by_side=True")
+
+        if isinstance(image, np.ndarray):
+            img = Image.fromarray(image)
+        else:
+            img = image
+
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+
+        img = img.resize(self._left.size, Image.LANCZOS)
+        self._canvas.paste(img, (self._x_right_offset, 0))
+        self._draw = ImageDraw.Draw(self._canvas)
+        return self
+
+    def save(self, path: str | Path):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self._canvas.save(path)
+
+    def to_pil(self) -> Image.Image:
+        return self._canvas
+
+    def to_numpy(self) -> np.ndarray:
+        return np.asarray(self._canvas)
+
     def _get_font(self):
         if self._font is not None:
             return self._font
@@ -86,9 +123,6 @@ class Drawer:
 
         self._font = ImageFont.load_default()
         return self._font
-
-    def _targets(self):
-        return self._resolve_targets()
 
     def _resolve_targets(self, draw_on: str | None = None) -> list[int]:
         mode = self._draw_on
@@ -113,7 +147,7 @@ class Drawer:
         label: str | None = None,
         color: str | tuple[int, int, int] = "blue",
         width: int = 2,
-        position=None,
+        position: Position = Position.TOP,
         fill: tuple[int, int, int] | tuple[int, int, int, int] | None = None,
         draw_on: str | None = None,
     ):
@@ -134,9 +168,7 @@ class Drawer:
                         fill=fill,
                     )
                 else:
-                    self._draw.rectangle(
-                        [xx1, y1, xx2, y2], outline=color, width=width, fill=fill
-                    )
+                    self._draw.rectangle([xx1, y1, xx2, y2], outline=color, width=width, fill=fill)
             else:
                 self._draw.rectangle([xx1, y1, xx2, y2], outline=color, width=width)
 
@@ -146,10 +178,7 @@ class Drawer:
                 pad = 2
 
                 # TOP по умолчанию
-                place_top = True
-                if position is not None and hasattr(position, "name"):
-                    if position.name.upper() == "BOTTOM":
-                        place_top = False
+                place_top = position is not Position.BOTTOM
 
                 if place_top:
                     tx, ty = xx1, max(0, y1 - text_h - 2 * pad)
@@ -164,6 +193,74 @@ class Drawer:
                     width=1,
                 )
                 self._draw.text((tx + pad, ty + pad), label, fill=color, font=font)
+
+        return self
+
+    def draw_boxes(
+        self,
+        boxes: list[tuple[int, int, int, int]],
+        *,
+        color: str | tuple[int, int, int] = "blue",
+        width: int = 2,
+        fill: tuple[int, int, int] | tuple[int, int, int, int] | None = None,
+        draw_on: str | None = None,
+    ):
+        """Рисует набор рамок без подписей.
+
+        Args:
+            boxes: Список bbox в формате (x1, y1, x2, y2).
+            color: Цвет рамки.
+            width: Толщина рамки.
+            fill: Цвет заливки. Для полупрозрачной заливки передавайте RGBA.
+            draw_on: Сторона холста: left, right или both.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        for bbox_xyxy in boxes:
+            self.draw_structure(
+                bbox_xyxy,
+                color=color,
+                width=width,
+                fill=fill,
+                draw_on=draw_on,
+            )
+
+        return self
+
+    def draw_labeled_boxes(
+        self,
+        items: list[tuple[tuple[int, int, int, int], str]],
+        *,
+        color: str | tuple[int, int, int] = "blue",
+        width: int = 2,
+        position: Position = Position.TOP,
+        fill: tuple[int, int, int] | tuple[int, int, int, int] | None = None,
+        draw_on: str | None = None,
+    ):
+        """Рисует набор рамок с подписями.
+
+        Args:
+            items: Список пар (bbox, label).
+            color: Цвет рамки и подписи.
+            width: Толщина рамки.
+            position: Позиция подписи относительно рамки.
+            fill: Цвет заливки. Для полупрозрачной заливки передавайте RGBA.
+            draw_on: Сторона холста: left, right или both.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        for bbox_xyxy, label in items:
+            self.draw_structure(
+                bbox_xyxy,
+                label=label,
+                color=color,
+                width=width,
+                position=position,
+                fill=fill,
+                draw_on=draw_on,
+            )
 
         return self
 
@@ -196,7 +293,7 @@ class Drawer:
             table_bbox_xyxy,
             label=label,
             color=color,
-            position=0,
+            position=Position.TOP,
             draw_on=draw_on,
         )
 
@@ -390,41 +487,3 @@ class Drawer:
     def _text_size(self, text: str, font) -> tuple[int, int]:
         left, top, right, bottom = self._draw.textbbox((0, 0), text, font=font)
         return max(1, right - left), max(1, bottom - top)
-
-    def draw_processed(self, processed: Union[np.ndarray, "Image.Image"]):
-        """Вставляет обработанное изображение в правую часть side-by-side холста.
-
-        Args:
-            processed: Обработанное изображение для вставки справа.
-
-        Raises:
-            ValueError: Если режим side_by_side не включён.
-
-        Returns:
-            Drawer: Текущий экземпляр для цепочки вызовов.
-        """
-        if not self._side_by_side:
-            raise ValueError("draw_processed доступен только в режиме side_by_side=True")
-
-        if isinstance(processed, np.ndarray):
-            img = Image.fromarray(processed)
-        else:
-            img = processed
-
-        if img.mode != "RGB":
-            img = img.convert("RGB")
-
-        img = img.resize(self._left.size, Image.LANCZOS)
-        self._canvas.paste(img, (self._x_right_offset, 0))
-        self._draw = ImageDraw.Draw(self._canvas)
-        return self
-
-    def save(self, path: str | Path):
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._canvas.save(path)
-
-    def to_pil(self) -> Image.Image:
-        return self._canvas
-
-    def to_numpy(self) -> np.ndarray:
-        return np.asarray(self._canvas)

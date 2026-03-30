@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from loguru import logger
 
-from vision_core.debug_observer import DebugObserver
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 
 
@@ -20,7 +20,7 @@ class TestPreprocessingImage:
     ):
         """Тестирует препроцессинг изображения"""
 
-        observer = DebugObserver(output_dir=output_dir)
+        observer = DebugImageObserver(output_dir=output_dir)
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -35,7 +35,7 @@ class TestPreprocessingImage:
             original = pdf_loader_single_page(pdf_bytes)
 
             processed = preprocessor_img.process(original)
-            observer.on_side_by_side(
+            observer.on_debug_image(
                 original,
                 processed,
                 stage="preprocessing",

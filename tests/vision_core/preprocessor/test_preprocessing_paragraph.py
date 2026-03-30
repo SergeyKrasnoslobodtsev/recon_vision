@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from loguru import logger
 
-from vision_core.debug_observer import DebugObserver
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.detector.table_detector import TableDetector
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
@@ -28,7 +28,7 @@ class TestPreprocessingParagraph:
     ):
         """Тестирует детекцию линий на изображении"""
 
-        observer = DebugObserver(output_dir=output_dir)
+        observer = DebugImageObserver(output_dir=output_dir)
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -50,7 +50,7 @@ class TestPreprocessingParagraph:
 
             paragraph_mask = preprocessor_paragraph.create_paragraph_mask(processed, bboxes)
 
-            observer.on_side_by_side(
+            observer.on_debug_image(
                 original, paragraph_mask, stage="paragraph_mask", prefix=f"{test_file.stem}", page_number=0
             )
 

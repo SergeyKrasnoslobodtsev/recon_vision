@@ -106,6 +106,15 @@ class ParagraphDetector:
         Returns:
             Список кластеров OCR-строк.
         """
+        min_cluster_size = max(1, int(self.cfg.min_cluster_size))
+        if len(ocr_results) < min_cluster_size:
+            logger.debug(
+                "Недостаточно OCR-результатов для HDBSCAN: "
+                f"n_samples={len(ocr_results)}, min_cluster_size={min_cluster_size}. "
+                "Возвращаем отдельные боксы."
+            )
+            return [[item] for item in ocr_results]
+
         features, scale_y, scale_x = self._build_features(ocr_results, image_shape)
         if features.size == 0 or scale_y <= 0 or scale_x <= 0:
             logger.warning("Невалидные признаки или масштаб, возвращаем отдельные боксы")
@@ -134,7 +143,7 @@ class ParagraphDetector:
             else:
                 result.append(cluster)
 
-        logger.debug(f"DBSCAN: обнаружено {len(result)} кластеров (вкл. шум)")
+        logger.debug(f"HDBSCAN: обнаружено {len(result)} кластеров (вкл. шум)")
         return result
 
     def _build_features(

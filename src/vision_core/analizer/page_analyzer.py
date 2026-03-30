@@ -1,4 +1,3 @@
-
 import cv2
 import numpy as np
 from loguru import logger
@@ -8,7 +7,6 @@ from vision_core.detector.table_detector import TableDetector
 from vision_core.entities.bbox import BBox
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
-from vision_core.observer import PipelineObserver
 from vision_core.ocr.paddle_ocr import OcrResult, PaddleOcrEngine
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
@@ -38,7 +36,6 @@ class PageAnalyzer:
         table_detector: TableDetector | None = None,
         paragraph_detector: ParagraphDetector | None = None,
         ocr_engine: PaddleOcrEngine | None = None,
-        observer: PipelineObserver | None = None,
     ):
         """Инициализирует анализатор страницы с возможностью внедрения зависимостей.
 
@@ -53,15 +50,12 @@ class PageAnalyzer:
                 По умолчанию создаётся экземпляр ParagraphDetector.
             ocr_engine: OCR движок.
                 По умолчанию создаётся экземпляр PaddleOcrEngine.
-            observer: Наблюдатель pipeline для debug-визуализации.
-                Если None — визуализация отключена, ноль overhead.
         """
         self.image_preprocessor = image_preprocessor or ImagePreprocessor()
         self.ocr_engine = ocr_engine or PaddleOcrEngine()
         self.paragraph_preprocessor = paragraph_preprocessor or ParagraphPreprocessor()
         self.table_detector = table_detector or TableDetector()
         self.paragraph_detector = paragraph_detector or ParagraphDetector()
-        self.observer = observer
 
     def analyze_page(self, image: np.ndarray, *, page_number: int = 0) -> Page:
         """Анализирует изображение страницы и извлекает структурированные данные.
@@ -74,38 +68,29 @@ class PageAnalyzer:
 
         Args:
             image: Изображение страницы в формате numpy array (BGR или RGB).
-            page_number: Номер страницы (для observer).
+            page_number: Номер страницы документа.
 
         Returns:
             Объект Page с распознанными таблицами, абзацами и метаданными.
-
-        Note:
-            Обработка абзацев пока не реализована (TODO #124).
         """
         processed_image = self._preprocess_image(image)
 
-        if self.observer is not None:
-            self.observer.on_side_by_side(
-                image, processed_image, stage="preprocessing", page_number=page_number,
-            )
-
         tables = self._detect_tables(processed_image)
 
-        ocr_results = self._recognize_text(
-            cv2.cvtColor(processed_image, cv2.COLOR_GRAY2BGR)
-        )
+        ocr_results = self._recognize_text(cv2.cvtColor(processed_image, cv2.COLOR_GRAY2BGR))
 
         self._fill_table_cells(tables, ocr_results)
 
         filtered_ocr_results = self._exclude_table_text(ocr_results, tables)
         logger.debug("Детекция абзацев начата")
         paragraphs = self.paragraph_detector.detect_paragraphs(
-            filtered_ocr_results, processed_image.shape[:2]
+            filtered_ocr_results,
+            processed_image.shape[:2],
         )
         logger.debug(f"Детекция абзацев завершена, обнаружено: {len(paragraphs)}")
         return Page(
             tables=tables,
-            paragraphs=paragraphs,  # TODO(#124): Добавить обработку абзацев
+            paragraphs=paragraphs,
             metadata={
                 "image_shape": list(image.shape[:2]),
             },
@@ -150,9 +135,7 @@ class PageAnalyzer:
         results = self.ocr_engine.predict(image)
         if not results:
             return []
-        logger.debug(
-            f"OCR распознавание завершено, средняя уверенность: {np.mean([r.confidence for r in results[0]])}"
-        )
+        logger.debug(f"OCR распознавание завершено, средняя уверенность: {np.mean([r.confidence for r in results[0]])}")
         return results[0]
 
     def _fill_table_cells(
