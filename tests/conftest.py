@@ -1,33 +1,31 @@
-import sys
-import pytest
-import shutil
 import os
+import shutil
+import sys
 import tempfile
 from pathlib import Path
 
+import pytest
 from _pytest.logging import LogCaptureFixture
 from loguru import logger
 
+from app.domain.entities.reconciliation_data import ReconciliationData
+from app.domain.value_objects.period import Period
+from app.infrastructure.persistence.diskcache_process_repository import (
+    DiskCacheProcessRepository,
+)
+from vision_core.analizer.page_analyzer import PageAnalyzer
+from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.detector.table_cell_detector import TableCellDetector
+from vision_core.detector.table_detector import TableDetector
+from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
+from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
-
-from app.infrastructure.persistence.diskcache_process_repository import (
-    DiskCacheProcessRepository,
-)
-from app.domain.entities.reconciliation_data import ReconciliationData
-from app.domain.value_objects.period import Period
-
-from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
-from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.detector.table_cell_detector import TableCellDetector
-from vision_core.detector.paragraph_detector import ParagraphDetector
-from vision_core.analizer.page_analyzer import PageAnalyzer
 
 ### Logger configuration
 
