@@ -1,5 +1,3 @@
-from typing import Optional
-
 import cv2
 import numpy as np
 from loguru import logger
@@ -8,7 +6,7 @@ from vision_core.config import TablePreprocessorConfig
 
 
 class TablePreprocessor:
-    def __init__(self, cfg: Optional[TablePreprocessorConfig] = None):
+    def __init__(self, cfg: TablePreprocessorConfig | None = None):
         """Предобработчик для таблиц
 
         Args:
@@ -26,9 +24,7 @@ class TablePreprocessor:
         # остается больше ложных линий, но потом мы их удалим с помощью clean_mask
         min_lenght_h = int(processed.shape[0] * self.cfg.horizontal_length_ratio)
         min_lenght_v = int(processed.shape[1] * self.cfg.vertical_length_ratio)
-        logger.debug(
-            f"Min lengths - Horizontal: {min_lenght_h}, Vertical: {min_lenght_v}"
-        )
+        logger.debug(f"Min lengths - Horizontal: {min_lenght_h}, Vertical: {min_lenght_v}")
         h_mask = self._detect_lines(processed, min_lenght_h, orientation="horizontal")
         v_mask = self._detect_lines(processed, min_lenght_v, orientation="vertical")
         table_mask = self._create_table_mask(h_mask, v_mask, min_lenght_h, min_lenght_v)
@@ -40,9 +36,7 @@ class TablePreprocessor:
             (self.cfg.gaussian_blur_kernel, self.cfg.gaussian_blur_kernel),
             0,
         )
-        binary = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[
-            1
-        ]
+        binary = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
         return binary
 
     def _create_table_mask(
@@ -129,8 +123,10 @@ class TablePreprocessor:
         Args:
             mask (np.ndarray): Бинарная маска линий (горизонтальных или вертикальных).
             intersec (np.ndarray): Маска точек пересечения горизонтальных и вертикальных линий.
-            min_length (int, optional): Минимальный размер связной компоненты (площадь/«длина» линии) для сохранения. Defaults to 120.
-            min_intersections (int, optional): Минимальное количество пересечений на концах линии для её сохранения. Defaults to 2.
+            min_length (int, optional): Минимальный размер связной компоненты (площадь/«длина» линии)
+            для сохранения. Defaults to 120.
+            min_intersections (int, optional): Минимальное количество пересечений на концах линии
+            для её сохранения. Defaults to 2.
             type (str, optional): Ориентация линии: "horizontal" или "vertical". Defaults to "horizontal".
 
         Returns:
@@ -157,32 +153,12 @@ class TablePreprocessor:
 
             # Если пересечения с двух концов линии есть, сохраняем компонент
             if type == "horizontal":
-                left = np.any(
-                    intersec[
-                        comp_boolean_mask
-                        & (np.arange(mask.shape[1]) < x + w // 3)[None, :]
-                    ]
-                )
-                right = np.any(
-                    intersec[
-                        comp_boolean_mask
-                        & (np.arange(mask.shape[1]) > x + 2 * w // 3)[None, :]
-                    ]
-                )
+                left = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[1]) < x + w // 3)[None, :]])
+                right = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[1]) > x + 2 * w // 3)[None, :]])
                 crosses = int(left) + int(right)
             else:  # vertical
-                top = np.any(
-                    intersec[
-                        comp_boolean_mask
-                        & (np.arange(mask.shape[0]) < y + h // 3)[:, None]
-                    ]
-                )
-                bottom = np.any(
-                    intersec[
-                        comp_boolean_mask
-                        & (np.arange(mask.shape[0]) > y + 2 * h // 3)[:, None]
-                    ]
-                )
+                top = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[0]) < y + h // 3)[:, None]])
+                bottom = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[0]) > y + 2 * h // 3)[:, None]])
                 crosses = int(top) + int(bottom)
 
             if crosses >= min_intersections:
@@ -240,10 +216,7 @@ class TablePreprocessor:
             morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_size))
             dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
         else:
-            raise ValueError(
-                f"Неверная ориентация: {orientation}. "
-                f"Ожидается 'horizontal' или 'vertical'"
-            )
+            raise ValueError(f"Неверная ориентация: {orientation}. Ожидается 'horizontal' или 'vertical'")
 
         lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, morph_kernel, iterations=2)
         reconstructed = cv2.dilate(lines, dilate_kernel, iterations=2)

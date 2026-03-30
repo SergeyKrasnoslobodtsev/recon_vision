@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -40,7 +39,7 @@ class TableDetectorConfig:
 
     min_table_area: int = 10000
     approx_poly_eps: float = 0.02
-    mode_merge_cells: Optional[str] = "cols"
+    mode_merge_cells: str | None = "cols"
 
 
 @dataclass

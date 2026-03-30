@@ -1,6 +1,6 @@
 import enum
 from dataclasses import dataclass
-from typing import Protocol, Union
+from typing import Protocol
 
 import numpy as np
 
@@ -37,5 +37,5 @@ class OcrEngine(Protocol):
     """
 
     def predict(
-        self, images: Union[np.ndarray, list[np.ndarray]]
+        self, images: np.ndarray | list[np.ndarray]
     ) -> list[list[OcrResult]]: ...

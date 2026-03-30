@@ -1,7 +1,7 @@
 from enum import Enum
 from pathlib import Path
 from textwrap import wrap
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -30,7 +30,7 @@ class Drawer:
 
     def __init__(
         self,
-        image: Union[np.ndarray, Image.Image],
+        image: np.ndarray | Image.Image,
         *,
         side_by_side: bool = False,
         text_panel_width: int = 0,
@@ -90,7 +90,7 @@ class Drawer:
     def _targets(self):
         return self._resolve_targets()
 
-    def _resolve_targets(self, draw_on: Optional[str] = None) -> list[int]:
+    def _resolve_targets(self, draw_on: str | None = None) -> list[int]:
         mode = self._draw_on
         if draw_on is not None:
             mode = draw_on
@@ -110,12 +110,12 @@ class Drawer:
         self,
         bbox_xyxy: tuple[int, int, int, int],
         *,
-        label: Optional[str] = None,
-        color: Union[str, tuple[int, int, int]] = "blue",
+        label: str | None = None,
+        color: str | tuple[int, int, int] = "blue",
         width: int = 2,
         position=None,
-        fill: Optional[Union[tuple[int, int, int], tuple[int, int, int, int]]] = None,
-        draw_on: Optional[str] = None,
+        fill: tuple[int, int, int] | tuple[int, int, int, int] | None = None,
+        draw_on: str | None = None,
     ):
         """
         bbox_xyxy: (x1, y1, x2, y2) в координатах ОРИГИНАЛА (левой части).
@@ -172,11 +172,11 @@ class Drawer:
         table_bbox_xyxy: tuple[int, int, int, int],
         *,
         cells: list[Any],
-        label: Optional[str] = None,
-        color: Union[str, tuple[int, int, int]] = "blue",
-        cell_color: Union[str, tuple[int, int, int]] = "cornflowerblue",
-        text_color: Union[str, tuple[int, int, int]] = "black",
-        draw_on: Optional[str] = None,
+        label: str | None = None,
+        color: str | tuple[int, int, int] = "blue",
+        cell_color: str | tuple[int, int, int] = "cornflowerblue",
+        text_color: str | tuple[int, int, int] = "black",
+        draw_on: str | None = None,
     ):
         """Рисует структуру таблицы и текст по ячейкам.
 
@@ -222,10 +222,10 @@ class Drawer:
         bbox_xyxy: tuple[int, int, int, int],
         *,
         text: str,
-        fill: Union[str, tuple[int, int, int]] = "black",
+        fill: str | tuple[int, int, int] = "black",
         padding: int = 2,
         line_spacing: int = 2,
-        draw_on: Optional[str] = None,
+        draw_on: str | None = None,
     ):
         """Рисует текст внутри bbox с переносами и обрезкой по высоте.
 
@@ -260,7 +260,7 @@ class Drawer:
         self,
         *,
         bbox: tuple[int, int, int, int],
-        outline: Union[str, tuple[int, int, int]],
+        outline: str | tuple[int, int, int],
         width: int,
         fill: tuple[int, int, int, int],
     ) -> None:
@@ -274,8 +274,8 @@ class Drawer:
         self,
         lines: list[str],
         *,
-        title: Optional[str] = None,
-        color: Union[str, tuple[int, int, int]] = "black",
+        title: str | None = None,
+        color: str | tuple[int, int, int] = "black",
         line_spacing: int = 6,
         padding: int = 12,
     ):
@@ -341,7 +341,7 @@ class Drawer:
         x: int,
         y: int,
         max_width: int,
-        fill: Union[str, tuple[int, int, int]],
+        fill: str | tuple[int, int, int],
         font,
         line_height: int,
         line_spacing: int,
@@ -419,7 +419,7 @@ class Drawer:
         self._draw = ImageDraw.Draw(self._canvas)
         return self
 
-    def save(self, path: Union[str, Path]):
+    def save(self, path: str | Path):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self._canvas.save(path)
 

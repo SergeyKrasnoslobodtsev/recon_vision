@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 from paddleocr import PaddleOCR
@@ -19,7 +18,7 @@ class PaddleOcrEngine(OcrEngine):
         ocr: Экземпляр PaddleOCR для выполнения распознавания.
     """
 
-    def __init__(self, config: Optional[VisionCoreConfig] = None):
+    def __init__(self, config: VisionCoreConfig | None = None):
         """Инициализирует движок PaddleOCR.
 
         Args:
@@ -54,7 +53,7 @@ class PaddleOcrEngine(OcrEngine):
             device=self.cfg.device,
         )
 
-    def predict_iter(self, images: Union[np.ndarray, list[np.ndarray]]):
+    def predict_iter(self, images: np.ndarray | list[np.ndarray]):
         """Распознаёт текст на изображениях в итеративном режиме.
 
         Обрабатывает изображения по одному и возвращает результаты через генератор.
@@ -86,7 +85,7 @@ class PaddleOcrEngine(OcrEngine):
             scores = res["rec_scores"]
 
             out: list[OcrResult] = []
-            for box, text, score in zip(boxes, texts, scores):
+            for box, text, score in zip(boxes, texts, scores, strict=False):
                 out.append(
                     OcrResult(
                         text=str(text),
@@ -97,7 +96,7 @@ class PaddleOcrEngine(OcrEngine):
 
             yield out
 
-    def predict(self, images: Union[np.ndarray, list[np.ndarray]]):
+    def predict(self, images: np.ndarray | list[np.ndarray]):
         """Распознаёт текст на изображениях и возвращает все результаты сразу.
 
         Args:

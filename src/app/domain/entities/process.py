@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.domain.entities.reconciliation_data import ReconciliationData
@@ -33,8 +33,8 @@ class ProcessState:
     reconciliation_data: ReconciliationData | None = None
     message: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def mark_processing(self, message: str = "") -> None:
         """Переводит процесс в статус обработки.
@@ -44,7 +44,7 @@ class ProcessState:
         """
         self.status = ProcessStatus.PROCESSING
         self.message = message
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def mark_completed(
         self,
@@ -60,7 +60,7 @@ class ProcessState:
         self.status = ProcessStatus.COMPLETED
         self.reconciliation_data = reconciliation_data
         self.message = message
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def mark_failed(self, message: str) -> None:
         """Переводит процесс в статус ошибки.
@@ -70,7 +70,7 @@ class ProcessState:
         """
         self.status = ProcessStatus.FAILED
         self.message = message
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)
 
     def mark_filled(self, message: str = "") -> None:
         """Переводит процесс в статус заполненного документа.
@@ -80,4 +80,4 @@ class ProcessState:
         """
         self.status = ProcessStatus.FILLED
         self.message = message
-        self.updated_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(UTC)

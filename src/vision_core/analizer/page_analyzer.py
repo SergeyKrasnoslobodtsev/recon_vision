@@ -1,4 +1,3 @@
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -34,12 +33,12 @@ class PageAnalyzer:
 
     def __init__(
         self,
-        image_preprocessor: Optional[ImagePreprocessor] = None,
-        paragraph_preprocessor: Optional[ParagraphPreprocessor] = None,
-        table_detector: Optional[TableDetector] = None,
-        paragraph_detector: Optional[ParagraphDetector] = None,
-        ocr_engine: Optional[PaddleOcrEngine] = None,
-        observer: Optional[PipelineObserver] = None,
+        image_preprocessor: ImagePreprocessor | None = None,
+        paragraph_preprocessor: ParagraphPreprocessor | None = None,
+        table_detector: TableDetector | None = None,
+        paragraph_detector: ParagraphDetector | None = None,
+        ocr_engine: PaddleOcrEngine | None = None,
+        observer: PipelineObserver | None = None,
     ):
         """Инициализирует анализатор страницы с возможностью внедрения зависимостей.
 

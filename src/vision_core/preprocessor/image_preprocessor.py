@@ -1,5 +1,3 @@
-from typing import Optional
-
 import cv2
 import numpy as np
 
@@ -9,7 +7,7 @@ from vision_core.config import ImagePreprocessorConfig
 class ImagePreprocessor:
     """Препроцессинг изображений с адаптивной обработкой"""
 
-    def __init__(self, config: Optional[ImagePreprocessorConfig] = None):
+    def __init__(self, config: ImagePreprocessorConfig | None = None):
         self.cfg = config or ImagePreprocessorConfig()
 
     def process(self, image: np.ndarray) -> np.ndarray:
@@ -36,7 +34,6 @@ class ImagePreprocessor:
 
         return processed
 
-
     def _darken_light_strokes(
         self,
         gray: np.ndarray,
@@ -46,7 +43,7 @@ class ImagePreprocessor:
         kernel_size: int = 5,
         blackhat_gain: float = 0.3,
     ) -> np.ndarray:
-        """ Усиление светлых штрихов с адаптивными параметрами
+        """Усиление светлых штрихов с адаптивными параметрами
 
         Args:
             gray (np.ndarray): входное изображение в оттенках серого
@@ -54,7 +51,8 @@ class ImagePreprocessor:
             clip_limit (float, optional): порог для CLAHE (1.0 - без усиления, 2.0 - сильное усиление). Defaults to 1.9.
             tile_size (int, optional): размер тайла для CLAHE (меньше - более локальный контраст). Defaults to 8.
             kernel_size (int, optional): размер ядра для blackhat (3-5 обычно достаточно). Defaults to 5.
-            blackhat_gain (float, optional): коэффициент усиления для вычитания (0.2-0.3 может помочь, но зависит от качества скана). Defaults to 0.3.
+            blackhat_gain (float, optional): коэффициент усиления для вычитания (0.2-0.3 может помочь,
+            но зависит от качества скана). Defaults to 0.3.
 
         Returns:
             np.ndarray: обработанное изображение
@@ -65,9 +63,7 @@ class ImagePreprocessor:
         kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, kernel_size))
         blackhat = cv2.morphologyEx(local, cv2.MORPH_BLACKHAT, kernel)
 
-        result = cv2.subtract(
-            local, (blackhat.astype(np.float32) * blackhat_gain).astype(np.uint8)
-        )
+        result = cv2.subtract(local, (blackhat.astype(np.float32) * blackhat_gain).astype(np.uint8))
         result = cv2.medianBlur(result, 3)  # легкое размытие для сглаживания артефактов
         return result
 
@@ -97,13 +93,12 @@ class ImagePreprocessor:
         """Нормализует фон, уменьшая влияние неровностей освещения
         Args:
             gray (np.ndarray): входное изображение в оттенках серого
-            kernel_size (int, optional): размер ядра для морфологических операций для оценки фона (обычно 21). Defaults to 21.
+            kernel_size (int, optional): размер ядра для морфологических операций
+            для оценки фона (обычно 21). Defaults to 21.
         Returns:
             tuple[np.ndarray, np.ndarray]: нормализованное изображение и оценка фона
         """
-        kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE, (kernel_size, kernel_size)
-        )
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
         background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
         normalized = cv2.divide(gray, background, scale=255)
         return normalized, background

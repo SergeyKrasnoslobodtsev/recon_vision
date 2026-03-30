@@ -1,4 +1,3 @@
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -14,7 +13,7 @@ from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 class TableDetector:
     """Детектор таблиц на изображении"""
 
-    def __init__(self, config: Optional[VisionCoreConfig] = None):
+    def __init__(self, config: VisionCoreConfig | None = None):
         """
         Args:
             config: Конфигурация для всех компонентов распознавания таблиц
@@ -24,7 +23,7 @@ class TableDetector:
 
         self.cfg = config.table_detector
 
-        self._table_mask: Optional[np.ndarray] = None
+        self._table_mask: np.ndarray | None = None
         self.preprocessor = TablePreprocessor(config.table_preprocessor)
         self.table_cell_detector = TableCellDetector(config.cell_detector)
 

@@ -77,9 +77,7 @@ class DocumentPdfFiller:
         for entry in entries:
             if entry.row_reference is None:
                 raise ValueError("Для заполнения записи требуется row_reference")
-            grouped_entries[
-                (entry.row_reference.id_table, entry.row_reference.id_row)
-            ].append(entry)
+            grouped_entries[(entry.row_reference.id_table, entry.row_reference.id_row)].append(entry)
 
         for (table_id, row_id), row_entries in grouped_entries.items():
             page_index, page_model, table_model = self._resolve_table(
@@ -159,7 +157,7 @@ class DocumentPdfFiller:
             self._write_text_to_cell(pdf_page, page_model, cells[1], text_chunks[-1])
             return
 
-        for cell, text in zip(cells, text_chunks):
+        for cell, text in zip(cells, text_chunks, strict=False):
             self._write_text_to_cell(pdf_page, page_model, cell, text)
 
     def _write_text_to_cell(

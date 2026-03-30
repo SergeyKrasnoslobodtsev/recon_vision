@@ -1,5 +1,3 @@
-from typing import Optional
-
 import numpy as np
 from loguru import logger
 from sklearn.cluster import HDBSCAN
@@ -19,16 +17,14 @@ class ParagraphDetector:
     строки в абзацы и разделять колонки.
     """
 
-    def __init__(self, config: Optional[ParagraphDetectorConfig] = None):
+    def __init__(self, config: ParagraphDetectorConfig | None = None):
         """Инициализирует детектор с конфигурацией или значениями по умолчанию.
 
         Args:
             config: Конфигурация детектора (eps, min_samples и пр.).
         """
         self.cfg = config or ParagraphDetectorConfig()
-        logger.debug(
-            f"ParagraphDetector инициализирован: eps=, min_samples={self.cfg.min_cluster_size}"
-        )
+        logger.debug(f"ParagraphDetector инициализирован: eps=, min_samples={self.cfg.min_cluster_size}")
 
     def detect_paragraphs(
         self,
@@ -54,9 +50,7 @@ class ParagraphDetector:
         if len(image_shape) != 2 or any(s <= 0 for s in image_shape):
             raise ValueError(f"Некорректный image_shape: {image_shape}")
 
-        logger.debug(
-            f"Начата детекция параграфов для {len(ocr_results)} OCR-результатов"
-        )
+        logger.debug(f"Начата детекция параграфов для {len(ocr_results)} OCR-результатов")
 
         clusters = self._clusterize(ocr_results, image_shape)
         clusters = self._merge_nested_clusters(clusters)
@@ -114,9 +108,7 @@ class ParagraphDetector:
         """
         features, scale_y, scale_x = self._build_features(ocr_results, image_shape)
         if features.size == 0 or scale_y <= 0 or scale_x <= 0:
-            logger.warning(
-                "Невалидные признаки или масштаб, возвращаем отдельные боксы"
-            )
+            logger.warning("Невалидные признаки или масштаб, возвращаем отдельные боксы")
             return [[item] for item in ocr_results]
 
         logger.debug(
@@ -131,7 +123,7 @@ class ParagraphDetector:
 
         labels = clustering.labels_
         clusters: dict[int, list[OcrResult]] = {}
-        for ocr, lbl in zip(ocr_results, labels):
+        for ocr, lbl in zip(ocr_results, labels, strict=False):
             clusters.setdefault(lbl, []).append(ocr)
 
         result: list[list[OcrResult]] = []

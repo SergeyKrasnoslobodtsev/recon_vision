@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
-
 from vision_core.pipelines.build_document import DocumentBuildPipeline
 
 
@@ -15,7 +13,7 @@ class VisionDocumentBuilder:
     """
 
     def __init__(self):
-        self._pipeline: Optional[DocumentBuildPipeline] = None
+        self._pipeline: DocumentBuildPipeline | None = None
 
     async def build(self, pdf_bytes: bytes):
         """Строит канонический документ из PDF.

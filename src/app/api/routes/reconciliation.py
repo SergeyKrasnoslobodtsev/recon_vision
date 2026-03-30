@@ -10,7 +10,11 @@ from app.api.dependencies import (
     get_submit_reconciliation_act_use_case,
 )
 from app.api.schemas.act_entry import ActEntryRequest, ActEntryResponse, RowId
-from app.api.schemas.process_status import GetProcessStatusRequest, ProcessIdResponse, StatusResponse
+from app.api.schemas.process_status import (
+    GetProcessStatusRequest,
+    ProcessIdResponse,
+    StatusResponse,
+)
 from app.api.schemas.reconciliation import (
     FillReconciliationActRequest,
     PeriodResponse,
@@ -25,7 +29,9 @@ from app.application.errors import (
     ProcessNotFoundError,
     ProcessNotReadyError,
 )
-from app.application.use_cases.fill_reconciliation_act import FillReconciliationActUseCase
+from app.application.use_cases.fill_reconciliation_act import (
+    FillReconciliationActUseCase,
+)
 from app.application.use_cases.get_process_status import GetProcessStatusUseCase
 from app.application.use_cases.submit_reconciliation_act import (
     SubmitReconciliationActUseCase,

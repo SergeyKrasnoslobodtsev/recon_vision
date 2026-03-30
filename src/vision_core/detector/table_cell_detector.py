@@ -1,4 +1,3 @@
-from typing import Optional
 
 import cv2
 import numpy as np
@@ -11,7 +10,7 @@ from vision_core.entities.cell import Cell
 class TableCellDetector:
     """Детектор ячеек в таблице"""
 
-    def __init__(self, cfg: Optional[TableCellDetectorConfig] = None):
+    def __init__(self, cfg: TableCellDetectorConfig | None = None):
         """
         Args:
             cfg: Конфигурация детектора ячеек
@@ -28,7 +27,7 @@ class TableCellDetector:
         self,
         table_mask: np.ndarray,
         table_bbox: tuple[int, int, int, int],
-        merge_mode: Optional[str] = None,
+        merge_mode: str | None = None,
     ) -> list[Cell]:
         """Извлекает ячейки из маски сырых таблиц. Под сырыми подразумевается
            все квадраты, попавшие под условия.
@@ -137,7 +136,7 @@ class TableCellDetector:
         x_coords: list[int],
         y_coords: list[int],
         table_bbox: tuple[int, int, int, int],
-        merge_mode: Optional[str],
+        merge_mode: str | None,
     ) -> list[Cell]:
         """Выбирает метод извлечения ячеек в зависимости от режима"""
         if merge_mode is None:

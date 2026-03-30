@@ -131,4 +131,5 @@ class Table(BaseModel):
         return True
 
     def __str__(self) -> str:
-        return f"Table(id={self.id}, rows={self.num_rows}, cols={self.num_cols}, pages={self.start_page}-{self.end_page})"
+        return f"Table(id={self.id}, rows={self.num_rows}, cols={self.num_cols},\
+                 pages={self.start_page}-{self.end_page})"
