@@ -1,15 +1,23 @@
-import pytest
 from pathlib import Path
+
+import numpy as np
+import pytest
 from loguru import logger
+
+from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.detector.table_cell_detector import TableCellDetector
+from vision_core.detector.table_detector import TableDetector
+from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.detector.table_cell_detector import TableCellDetector
-from vision_core.utils.drawer import Drawer, Position
-import numpy as np
-
 
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
+
+
+@pytest.fixture
+def orientation_preprocessor() -> PageOrientationPreprocessor:
+    """Экземпляр PageOrientationPreprocessor"""
+    return PageOrientationPreprocessor()
 
 
 class TestCellDetector:
@@ -24,6 +32,7 @@ class TestCellDetector:
         preprocessor_table: TablePreprocessor,
         table_detector: TableDetector,
         cell_detector: TableCellDetector,
+        orientation_preprocessor: PageOrientationPreprocessor,
     ):
         """Тестирует детекцию таблиц на изображении"""
 

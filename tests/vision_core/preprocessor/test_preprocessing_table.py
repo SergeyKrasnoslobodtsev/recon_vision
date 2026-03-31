@@ -6,10 +6,17 @@ from loguru import logger
 
 from vision_core.config import TablePreprocessorConfig
 from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 
 # command pytest tests/vision_core/detector/test_table_detector.py -v -s
+
+
+@pytest.fixture
+def orientation_preprocessor() -> PageOrientationPreprocessor:
+    """Экземпляр PageOrientationPreprocessor"""
+    return PageOrientationPreprocessor()
 
 
 class TestPreprocessingTable:
@@ -22,6 +29,7 @@ class TestPreprocessingTable:
         pdf_loader_single_page: np.ndarray,
         preprocessor_img: ImagePreprocessor,
         preprocessor_table: TablePreprocessor,
+        orientation_preprocessor: PageOrientationPreprocessor,
     ):
         """Тестирует детекцию линий на изображении"""
         observer = DebugImageObserver(output_dir=output_dir)
@@ -72,6 +80,7 @@ class TestPreprocessingTable:
         pdf_loader_single_page: np.ndarray,
         preprocessor_img: ImagePreprocessor,
         preprocessor_table: TablePreprocessor,
+        orientation_preprocessor: PageOrientationPreprocessor,
     ):
         """Тестирует создание маски таблиц на изображении"""
 
