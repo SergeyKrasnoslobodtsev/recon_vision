@@ -68,11 +68,12 @@ class TestCellDetector:
                 )
 
                 for cell_bbox in cells_bboxes:
-                    drawer.draw_structure(
-                        cell_bbox.bbox.to_tuple(),
-                        label=f"R{cell_bbox.row}C{cell_bbox.col}S{cell_bbox.colspan}",
-                        color="darkgreen",
-                        position=Position.TOP,
-                    )
-
-            drawer.save(output_dir / f"detected_cells_{test_file.stem}.png")
+                    items.append((cell_bbox.bbox.to_tuple(), f"R{cell_bbox.row}C{cell_bbox.col}S{cell_bbox.colspan}"))
+            observer.on_labeled_boxes(
+                processed,
+                items=items,
+                stage="detected_cells",
+                prefix=test_file.stem,
+                page_number=0,
+                color="blue",
+            )
