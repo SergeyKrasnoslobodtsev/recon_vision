@@ -53,6 +53,7 @@ class Paragraph(BaseModel):
             text=self.text,
             bbox=self.bbox.padding(pixel),
             blobs=[blob.padding(pixel) for blob in self.blobs],
+            type=self.type,
         )
 
     def intersect(self, other: "Paragraph") -> float:
