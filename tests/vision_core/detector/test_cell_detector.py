@@ -44,21 +44,21 @@ class TestCellDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files[:1]:
+        observer = DebugImageObserver(output_dir=output_dir)
+
+        for test_file in pdf_files:
             logger.info(f"Тестирование на файле: {test_file.name}")
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
 
             processed = preprocessor_img.process(original)
+            processed, _ = orientation_preprocessor.process(processed)
 
             table_mask = preprocessor_table.create_table_mask(processed)
 
             bboxes = table_detector.extract_raw_tables(table_mask)
 
-            debug_image = original.copy()
-
-            drawer = Drawer(debug_image, side_by_side=True)
-
+            items: list[tuple[tuple[int, int, int, int], str]] = []
             for bbox in bboxes:
                 roi_mask = bbox.roi(table_mask)
                 cells_bboxes = cell_detector.extract_cells(

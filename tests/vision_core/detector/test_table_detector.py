@@ -58,7 +58,7 @@ class TestTableDetector:
             bboxes = table_detector.extract_raw_tables(mask_table)
 
             observer.on_labeled_boxes(
-                original,
+                oriented_img,
                 items=[(bbox.to_tuple(), f"Table {index}") for index, bbox in enumerate(bboxes, start=1)],
                 stage="detected_tables",
                 prefix=test_file.stem,
