@@ -8,6 +8,7 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
 from vision_core.ocr.paddle_ocr import OcrResult, PaddleOcrEngine
+from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
 
@@ -36,6 +37,7 @@ class PageAnalyzer:
         table_detector: TableDetector | None = None,
         paragraph_detector: ParagraphDetector | None = None,
         ocr_engine: PaddleOcrEngine | None = None,
+        orientation_preprocessor: PageOrientationPreprocessor | None = None,
     ):
         """Инициализирует анализатор страницы с возможностью внедрения зависимостей.
 
@@ -50,21 +52,25 @@ class PageAnalyzer:
                 По умолчанию создаётся экземпляр ParagraphDetector.
             ocr_engine: OCR движок.
                 По умолчанию создаётся экземпляр PaddleOcrEngine.
+            orientation_preprocessor: Препроцессор ориентации страницы.
+                По умолчанию создаётся экземпляр PageOrientationPreprocessor.
         """
         self.image_preprocessor = image_preprocessor or ImagePreprocessor()
         self.ocr_engine = ocr_engine or PaddleOcrEngine()
         self.paragraph_preprocessor = paragraph_preprocessor or ParagraphPreprocessor()
         self.table_detector = table_detector or TableDetector()
         self.paragraph_detector = paragraph_detector or ParagraphDetector()
+        self.page_orientation_preprocessor = orientation_preprocessor or PageOrientationPreprocessor()
 
     def analyze_page(self, image: np.ndarray, *, page_number: int = 0) -> Page:
         """Анализирует изображение страницы и извлекает структурированные данные.
 
         Последовательность обработки:
-        1. Предобработка изображения для улучшения качества распознавания.
-        2. Детекция таблиц на изображении.
-        3. OCR-распознавание всего текста.
-        4. Заполнение ячеек таблиц распознанным текстом.
+        1. Выравнивание страницы по ориентации и наклону.
+        2. Предобработка изображения для улучшения качества распознавания.
+        3. Детекция таблиц на изображении.
+        4. OCR-распознавание всего текста.
+        5. Заполнение ячеек таблиц распознанным текстом.
 
         Args:
             image: Изображение страницы в формате numpy array (BGR или RGB).
@@ -73,7 +79,9 @@ class PageAnalyzer:
         Returns:
             Объект Page с распознанными таблицами, абзацами и метаданными.
         """
-        processed_image = self._preprocess_image(image)
+        aligned_image, alignment_metadata = self._rotate_by_orientation(image)
+
+        processed_image = self._preprocess_image(aligned_image)
 
         tables = self._detect_tables(processed_image)
 
@@ -93,8 +101,21 @@ class PageAnalyzer:
             paragraphs=paragraphs,
             metadata={
                 "image_shape": list(image.shape[:2]),
+                **alignment_metadata,
             },
         )
+
+    def _rotate_by_orientation(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float]]:
+        """Выравнивает изображение по ориентации и наклону.
+
+        Args:
+            image (np.ndarray): Исходное изображение страницы.
+
+        Returns:
+            tuple[np.ndarray, dict[str, float]]: Выравненное изображение и metadata шага.
+        """
+        aligned_image, alignment_metadata = self.page_orientation_preprocessor.process(image)
+        return aligned_image, alignment_metadata
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """Выполняет предобработку изображения для улучшения качества распознавания.
@@ -134,6 +155,9 @@ class PageAnalyzer:
         logger.debug("Начало OCR распознавания текста на изображении")
         results = self.ocr_engine.predict(image)
         if not results:
+            return []
+        if not results[0]:
+            logger.debug("OCR распознавание завершено без результатов")
             return []
         logger.debug(f"OCR распознавание завершено, средняя уверенность: {np.mean([r.confidence for r in results[0]])}")
         return results[0]

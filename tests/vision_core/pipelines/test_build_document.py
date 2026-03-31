@@ -40,8 +40,8 @@ class FakePageAnalyzer:
     def __init__(self):
         self.images = []
 
-    def analyze_page(self, image) -> Page:
-        self.images.append(image)
+    def analyze_page(self, image, *, page_number: int = 0) -> Page:
+        self.images.append((page_number, image))
         return Page(metadata={"analyzed": True, "image": image})
 
 
@@ -63,8 +63,8 @@ class TestDocumentBuildPipeline:
         assert document.metadata == {"dpi": 200, "num_pages": 2}
         assert document.num_pages == 2
         assert analyzer.images == [
-            {"page_num": 0, "dpi": 200},
-            {"page_num": 1, "dpi": 200},
+            (0, {"page_num": 0, "dpi": 200}),
+            (1, {"page_num": 1, "dpi": 200}),
         ]
 
         first_page = document.pages[0]

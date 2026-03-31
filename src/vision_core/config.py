@@ -112,6 +112,32 @@ class PaddleOcrConfig:
 
 
 @dataclass
+class PageOrientationPreprocessorConfig:
+    """Конфигурация препроцессора определения ориентации страницы.
+
+    Attributes:
+        model_name: Название модели классификации ориентации документа.
+        model_dir: Директория с моделью классификации ориентации документа.
+        enabled: Включено ли выравнивание страницы в pipeline.
+        min_orientation_score: Минимальный score классификатора ориентации для применения поворота.
+        max_skew_deg: Максимальный угол для fine deskew.
+        coarse_step_deg: Шаг грубого поиска угла deskew.
+        fine_window_deg: Окно точного поиска вокруг лучшего угла грубого этапа.
+        fine_step_deg: Шаг точного поиска угла deskew.
+        min_abs_deskew_angle_deg: Минимальный по модулю угол, который стоит применять.
+    """
+
+    model_name: str = "PP-LCNet_x1_0_doc_ori"
+    model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-LCNet_x1_0_doc_ori")
+    min_orientation_score: float = 0.7
+    max_skew_deg: float = 10.0
+    coarse_step_deg: float = 0.5
+    fine_window_deg: float = 0.5
+    fine_step_deg: float = 0.1
+    min_abs_deskew_angle_deg: float = 0.05
+
+
+@dataclass
 class ParagraphDetectorConfig:
     """Конфигурация детектора параграфов.
 
@@ -131,6 +157,9 @@ class VisionCoreConfig:
     table_preprocessor: TablePreprocessorConfig = field(default_factory=TablePreprocessorConfig)
 
     paddleocr: PaddleOcrConfig = field(default_factory=PaddleOcrConfig)
+    page_orientation_preprocessor: PageOrientationPreprocessorConfig = field(
+        default_factory=PageOrientationPreprocessorConfig
+    )
 
     paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
 
@@ -142,5 +171,8 @@ class VisionCoreConfig:
             cell_detector=TableCellDetectorConfig(**config_dict.get("cell_detector", {})),
             table_preprocessor=TablePreprocessorConfig(**config_dict.get("table_preprocessor", {})),
             paddleocr=PaddleOcrConfig(**config_dict.get("paddleocr", {})),
+            page_orientation_preprocessor=PageOrientationPreprocessorConfig(
+                **config_dict.get("page_orientation_preprocessor", {})
+            ),
             paragraph_detector=ParagraphDetectorConfig(**config_dict.get("paragraph_detector", {})),
         )
