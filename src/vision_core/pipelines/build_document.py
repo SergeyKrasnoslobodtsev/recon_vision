@@ -35,8 +35,12 @@ class DocumentBuildPipeline:
         cfg = config or VisionCoreConfig()
         self.orientation_preprocessor = PageOrientationPreprocessor(cfg.page_orientation_preprocessor)
         self.image_preprocessor = ImagePreprocessor(cfg.image_preprocessor)
-        self.table_detector = TableDetector(cfg)
-        self.ocr_engine = PaddleOcrEngine(cfg)
+        self.table_detector = TableDetector(
+            preprocessor_config=cfg.table_preprocessor,
+            table_detector_config=cfg.table_detector,
+            cell_detector_config=cfg.cell_detector,
+        )
+        self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
         self.paragraph_detector = ParagraphDetector(cfg.paragraph_detector)
         self.cell_text_filler = CellTextFiller(cfg.ocr_confidence_threshold)
         self.dpi = cfg.dpi
@@ -57,11 +61,13 @@ class DocumentBuildPipeline:
                 image = loader.get_page_image(page_number, dpi=self.dpi)
                 page = self._process_page(image, page_number)
                 page.page_number = page_number
-                page.metadata.update({
-                    "source_page_number": page_number,
-                    "page_size": list(loader.get_page_size(page_number)),
-                    "has_text_layer": loader.has_text_layer(page_number),
-                })
+                page.metadata.update(
+                    {
+                        "source_page_number": page_number,
+                        "page_size": list(loader.get_page_size(page_number)),
+                        "has_text_layer": loader.has_text_layer(page_number),
+                    }
+                )
                 pages.append(page)
 
         return Document.from_pdf_bytes(
@@ -115,6 +121,8 @@ class DocumentBuildPipeline:
         results = self.ocr_engine.predict(bgr_image)
         if not results or not results[0]:
             return []
-        logger.debug(f"OCR: распознано {len(results[0])} блоков, "
-                     f"средняя уверенность: {np.mean([r.confidence for r in results[0]]):.2f}")
+        logger.debug(
+            f"OCR: распознано {len(results[0])} блоков, "
+            f"средняя уверенность: {np.mean([r.confidence for r in results[0]]):.2f}"
+        )
         return results[0]
