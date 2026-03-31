@@ -112,7 +112,7 @@ class TableCellDetector:
     # ------------------------------------------------------------------
     # Построение ячеек: Union-Find
     # ------------------------------------------------------------------
-
+    # TODO: требует улучшения кода и оптимизации, сейчас слишком много циклов и проверок
     def _build_cells(
         self,
         x: int,
@@ -245,7 +245,7 @@ class TableCellDetector:
                     col=c,
                     colspan=1,
                     rowspan=1,
-                    text="",
+                    value="",
                 )
                 for r, c in members
             ]
@@ -265,7 +265,7 @@ class TableCellDetector:
                 col=min_c,
                 colspan=len(cols),
                 rowspan=len(rows),
-                text="",
+                value="",
             )
         ]
 
