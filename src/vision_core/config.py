@@ -152,6 +152,7 @@ class ParagraphDetectorConfig:
 class VisionCoreConfig:
     """Общая конфигурация для распознавания таблиц"""
 
+    image_preprocessor: ImagePreprocessorConfig = field(default_factory=ImagePreprocessorConfig)
     table_detector: TableDetectorConfig = field(default_factory=TableDetectorConfig)
     cell_detector: TableCellDetectorConfig = field(default_factory=TableCellDetectorConfig)
     table_preprocessor: TablePreprocessorConfig = field(default_factory=TablePreprocessorConfig)
@@ -169,6 +170,9 @@ class VisionCoreConfig:
     def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":
         """Создание из словаря (для загрузки из JSON/YAML)"""
         return cls(
+            dpi=config_dict.get("dpi", 300),
+            ocr_confidence_threshold=config_dict.get("ocr_confidence_threshold", 0.7),
+            image_preprocessor=ImagePreprocessorConfig(**config_dict.get("image_preprocessor", {})),
             table_detector=TableDetectorConfig(**config_dict.get("table_detector", {})),
             cell_detector=TableCellDetectorConfig(**config_dict.get("cell_detector", {})),
             table_preprocessor=TablePreprocessorConfig(**config_dict.get("table_preprocessor", {})),
