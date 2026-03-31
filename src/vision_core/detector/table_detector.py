@@ -1,9 +1,8 @@
-
 import cv2
 import numpy as np
 from loguru import logger
 
-from vision_core.config import VisionCoreConfig
+from vision_core.config import TableCellDetectorConfig, TableDetectorConfig, TablePreprocessorConfig
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.entities.bbox import BBox
 from vision_core.entities.table import Table
@@ -13,19 +12,23 @@ from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 class TableDetector:
     """Детектор таблиц на изображении"""
 
-    def __init__(self, config: VisionCoreConfig | None = None):
+    def __init__(
+        self,
+        preprocessor_config: TablePreprocessorConfig | None = None,
+        table_detector_config: TableDetectorConfig | None = None,
+        cell_detector_config: TableCellDetectorConfig | None = None,
+    ):
         """
         Args:
-            config: Конфигурация для всех компонентов распознавания таблиц
+            preprocessor_config: Конфигурация для предобработки таблиц. Если None, используется конфигурация по умолчанию.
+            table_detector_config: Конфигурация для детектора таблиц. Если None, используется конфигурация по умолчанию.
+            cell_detector_config: Конфигурация для детектора ячеек. Если None, используется конфигурация по умолчанию.
         """
-        if config is None:
-            config = VisionCoreConfig()
-
-        self.cfg = config.table_detector
+        self.cfg = table_detector_config or TableDetectorConfig()
 
         self._table_mask: np.ndarray | None = None
-        self.preprocessor = TablePreprocessor(config.table_preprocessor)
-        self.table_cell_detector = TableCellDetector(config.cell_detector)
+        self.preprocessor = TablePreprocessor(preprocessor_config)
+        self.table_cell_detector = TableCellDetector(cell_detector_config)
 
     def detect_tables(self, image: np.ndarray) -> list[Table]:
         # Создаем маску таблицы
@@ -56,9 +59,7 @@ class TableDetector:
 
             if not table.is_valid() or not table.validate_structure():
                 continue
-            logger.debug(
-                f"Найдена таблица {table.id}: c {table.num_rows} строк и {table.num_cols} столбцов"
-            )
+            logger.debug(f"Найдена таблица {table.id}: c {table.num_rows} строк и {table.num_cols} столбцов")
             tables.append(table)
 
         return tables
@@ -69,9 +70,7 @@ class TableDetector:
         Также можно указать padding вокруг линий, чтобы захватить больше пространства.
         """
         if self._table_mask is None:
-            raise ValueError(
-                "Маска таблиц не доступна. Сначала вызовите detect_tables()"
-            )
+            raise ValueError("Маска таблиц не доступна. Сначала вызовите detect_tables()")
         roi_mask = table.bbox.padding(padding).roi(self._table_mask)
         return roi_mask
 
@@ -105,15 +104,11 @@ class TableDetector:
         roi = table.bbox.roi(result)
 
         if roi.shape[:2] != line_mask.shape:
-            line_mask = cv2.resize(
-                line_mask, (roi.shape[1], roi.shape[0]), interpolation=cv2.INTER_NEAREST
-            )
+            line_mask = cv2.resize(line_mask, (roi.shape[1], roi.shape[0]), interpolation=cv2.INTER_NEAREST)
 
         # Расширяем маску если нужен padding
         if padding > 0:
-            kernel = cv2.getStructuringElement(
-                cv2.MORPH_RECT, (padding * 2 + 1, padding * 2 + 1)
-            )
+            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (padding * 2 + 1, padding * 2 + 1))
             line_mask = cv2.dilate(line_mask, kernel, iterations=1)
 
         roi[line_mask > 0] = fill_value
@@ -125,9 +120,7 @@ class TableDetector:
         return self._find_tables(table_mask)
 
     def _find_tables(self, table_mask: np.ndarray):
-        contours, _ = cv2.findContours(
-            table_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
+        contours, _ = cv2.findContours(table_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         bboxes: list[BBox] = []
         for cnt in contours:
             arclen = cv2.arcLength(cnt, True)
