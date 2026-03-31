@@ -1,3 +1,6 @@
+"""Детектор ячеек таблицы на основе анализа сетки линий."""
+
+from __future__ import annotations
 
 import cv2
 import numpy as np
@@ -6,18 +9,23 @@ from vision_core.config import TableCellDetectorConfig
 from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 
+_MERGE_COLS = "cols"
+_MERGE_ROWS = "rows"
+_MERGE_ALL = "all"
+
 
 class TableCellDetector:
-    """Детектор ячеек в таблице"""
+    """Детектор ячеек таблицы.
 
-    def __init__(self, cfg: TableCellDetectorConfig | None = None):
-        """
-        Args:
-            cfg: Конфигурация детектора ячеек
-        """
+    Разделяет маску на горизонтальные и вертикальные линии, строит сетку
+    координат и извлекает ячейки методом Union-Find: для каждой пары
+    соседних ячеек проверяет наличие разделителя в маске — если его нет,
+    ячейки объединяются.
+    """
+
+    def __init__(self, cfg: TableCellDetectorConfig | None = None) -> None:
         if cfg is None:
             cfg = TableCellDetectorConfig()
-
         self.min_cell = cfg.min_cell
         self.padding = cfg.padding
         self.threshold_line = cfg.threshold_line
@@ -29,382 +37,320 @@ class TableCellDetector:
         table_bbox: tuple[int, int, int, int],
         merge_mode: str | None = None,
     ) -> list[Cell]:
-        """Извлекает ячейки из маски сырых таблиц. Под сырыми подразумевается
-           все квадраты, попавшие под условия.
+        """Извлекает ячейки из маски таблицы.
 
         Args:
-            table_mask (np.ndarray): маска таблицы
-            table_bbox (tuple[int, int, int, int]): ограничивающий прямоугольник таблицы
-            merge_mode (Optional[str], optional): Режим объединения ячеек:
-                - None: без объединения
-                - "cols": объединение по столбцам
-                - "rows": объединение по строкам
-                - "all": полное объединение
+            table_mask: Бинарная маска таблицы (линии белые, фон чёрный).
+            table_bbox: Координаты таблицы на исходном изображении (x_min, y_min, x_max, y_max).
+            merge_mode: Режим объединения ячеек: "cols", "rows", "all" или None.
 
         Returns:
-            list[Cell]: Список ячеек структурой Cell
+            Список ячеек, отсортированных по (row, col).
         """
+        x, y = table_bbox[0], table_bbox[1]
+        pure_h, pure_v = self._split_lines(table_mask)
+        return self._build_cells(x, y, pure_h, pure_v, merge_mode)
 
-        y_coords, x_coords = self._build_grid_coordinates_from_mask(table_mask)
+    # ------------------------------------------------------------------
+    # Разделение маски на горизонтальные и вертикальные линии
+    # ------------------------------------------------------------------
 
-        return self._extract_cells_by_mode(
-            table_mask, x_coords, y_coords, table_bbox, merge_mode
-        )
-
-    def _build_grid_coordinates_from_mask(
-        self,
-        roi_mask: np.ndarray,
-    ) -> tuple[list[int], list[int]]:
-        """
-        Строит координаты сетки напрямую из бинарной маски линий.
-        Идея: берём профили (доля белых пикселей) по X и по Y, находим "полосы" линий,
-        схлопываем в центры и фильтруем близкие координаты.
-        """
-        if roi_mask.ndim != 2:
-            raise ValueError("roi_mask must be 2D (single-channel)")
-
-        h, w = roi_mask.shape[:2]
-        bin_img = (roi_mask > 0).astype(np.uint8)
-
-        # Профили: сколько белого в каждой колонке/строке
-        x_profile = bin_img.mean(axis=0)  # shape: (w,)
-        y_profile = bin_img.mean(axis=1)  # shape: (h,)
-
-        x_thr = max(0.003, 0.25 * float(x_profile.max()))
-        y_thr = max(0.003, 0.25 * float(y_profile.max()))
-
-        x_idxs = np.where(x_profile >= x_thr)[0]
-        y_idxs = np.where(y_profile >= y_thr)[0]
-
-        def _runs_to_centers(idxs: np.ndarray) -> list[int]:
-            if idxs.size == 0:
-                return []
-            centers: list[int] = []
-            start = int(idxs[0])
-            prev = int(idxs[0])
-            for v in idxs[1:]:
-                v = int(v)
-                if v == prev + 1:
-                    prev = v
-                else:
-                    centers.append((start + prev) // 2)
-                    start = prev = v
-            centers.append((start + prev) // 2)
-            return centers
-
-        x_coords = _runs_to_centers(x_idxs)
-        y_coords = _runs_to_centers(y_idxs)
-
-        # Границы ROI (чтобы сетка была замкнутой даже если крайняя линия не попала в профиль)
-        if 0 not in x_coords:
-            x_coords = [0] + x_coords
-        if (w - 1) not in x_coords:
-            x_coords = x_coords + [w - 1]
-
-        if 0 not in y_coords:
-            y_coords = [0] + y_coords
-        if (h - 1) not in y_coords:
-            y_coords = y_coords + [h - 1]
-
-        x_coords = sorted(set(int(x) for x in x_coords))
-        y_coords = sorted(set(int(y) for y in y_coords))
-
-        # Фильтруем слишком близкие координаты
-        min_dist = max(2, int(self.min_cell))
-        x_coords = self._filter_close_coordinates(x_coords, min_dist)
-        y_coords = self._filter_close_coordinates(y_coords, min_dist)
-
-        return y_coords, x_coords
-
-    def _filter_close_coordinates(
-        self,
-        coords: list[int],
-        min_distance: int,
-    ) -> list[int]:
-        """Фильтрует слишком близкие координаты"""
-        filtered = []
-
-        for i, coord in enumerate(coords):
-            if i == 0 or (coord - filtered[-1]) >= min_distance:
-                filtered.append(coord)
-
-        return filtered
-
-    def _extract_cells_by_mode(
-        self,
-        roi_mask: np.ndarray,
-        x_coords: list[int],
-        y_coords: list[int],
-        table_bbox: tuple[int, int, int, int],
-        merge_mode: str | None,
-    ) -> list[Cell]:
-        """Выбирает метод извлечения ячеек в зависимости от режима"""
-        if merge_mode is None:
-            return self._extract_base_cells(x_coords, y_coords, table_bbox)
-
-        v_gaps, h_gaps = self._build_gap_matrices(roi_mask, x_coords, y_coords)
-
-        if merge_mode == "cols":
-            return self._extract_merged_cols(x_coords, y_coords, table_bbox, v_gaps)
-        elif merge_mode == "rows":
-            return self._extract_merged_rows(x_coords, y_coords, table_bbox, h_gaps)
-        else:  # "all"
-            return self._extract_fully_merged(
-                x_coords, y_coords, table_bbox, v_gaps, h_gaps
-            )
-
-    def _extract_base_cells(
-        self,
-        x_coords: list[int],
-        y_coords: list[int],
-        table_bbox: tuple[int, int, int, int],
-    ) -> list[Cell]:
-        """Извлекает базовые ячейки без объединения"""
-        cells = []
-
-        for i in range(len(y_coords) - 1):
-            for j in range(len(x_coords) - 1):
-                bbox = BBox(
-                    x_min=x_coords[j] + table_bbox[0],
-                    y_min=y_coords[i] + table_bbox[1],
-                    x_max=x_coords[j + 1] + table_bbox[0],
-                    y_max=y_coords[i + 1] + table_bbox[1],
-                )
-
-                cells.append(Cell(row=i, col=j, bbox=bbox, colspan=1, rowspan=1))
-
-        return cells
-
-    def _build_gap_matrices(
-        self,
-        mask: np.ndarray,
-        x_coords: list[int],
-        y_coords: list[int],
-    ) -> tuple[np.ndarray, np.ndarray]:
-        """Строит матрицы вертикальных и горизонтальных разделителей между ячейками таблицы.
-        Метод анализирует бинарную маску с линиями таблицы и определяет, где присутствуют
-        физические границы между ячейками. Использует морфологические операции для выделения
-        горизонтальных и вертикальных линий, а затем проверяет их наличие в окрестности
-        заданных координат сетки.
+    def _split_lines(self, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Разделяет маску таблицы на горизонтальные и вертикальные линии.
 
         Args:
-            mask (np.ndarray): Бинарная маска изображения с линиями таблицы (H x W).
-            x_coords (list[int]): Список x-координат вертикальных линий сетки таблицы,
-                отсортированный по возрастанию. Определяет границы столбцов.
-            y_coords (list[int]): Список y-координат горизонтальных линий сетки таблицы,
-                отсортированный по возрастанию. Определяет границы строк.
+            mask: Бинарная маска таблицы.
 
         Returns:
-            tuple[np.ndarray, np.ndarray]: Кортеж из двух булевых матриц:
-            - vertical_gaps: Матрица размером (n_rows, n_cols-1), где vertical_gaps[i, j]=True
-                означает наличие вертикальной границы между столбцами j и j+1 в строке i.
-            - horizontal_gaps: Матрица размером (n_rows-1, n_cols), где horizontal_gaps[i, j]=True
-                означает наличие горизонтальной границы между строками i и i+1 в столбце j.
-            Если сетка пустая (n_rows<=0 или n_cols<=0), возвращаются пустые матрицы (0, 0).
+            Кортеж (pure_h, pure_v) — маски горизонтальных и вертикальных линий.
         """
-
-        n_rows = len(y_coords) - 1
-        n_cols = len(x_coords) - 1
-
-        if n_rows <= 0 or n_cols <= 0:
-            return np.zeros((0, 0), dtype=bool), np.zeros((0, 0), dtype=bool)
-
-        vertical_gaps = np.zeros((n_rows, max(0, n_cols - 1)), dtype=bool)
-        horizontal_gaps = np.zeros((max(0, n_rows - 1), n_cols), dtype=bool)
-
         h, w = mask.shape[:2]
-        bin_img = (mask > 0).astype(np.uint8) * 255
+        k_h = max(10, w // 20)
+        k_v = max(10, h // 20)
 
-        # Оценим типичный размер ячейки
-        dx = np.diff(np.array(x_coords, dtype=np.int32))
-        dy = np.diff(np.array(y_coords, dtype=np.int32))
-        med_dx = int(np.median(dx[dx > 0])) if np.any(dx > 0) else max(10, w // 20)
-        med_dy = int(np.median(dy[dy > 0])) if np.any(dy > 0) else max(10, h // 20)
-
-        # Ядра для выделения ориентированных линий
-        k_h = max(10, int(0.6 * med_dx))
-        k_v = max(10, int(0.6 * med_dy))
-
-        # Сначала слегка соединяем разрывы
-        close_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-        closed = cv2.morphologyEx(bin_img, cv2.MORPH_CLOSE, close_kernel, iterations=1)
-
-        # Затем выделяем горизонтали/вертикали
         h_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k_h, 1))
         v_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, k_v))
 
-        h_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, h_kernel, iterations=1)
-        v_mask = cv2.morphologyEx(closed, cv2.MORPH_OPEN, v_kernel, iterations=1)
+        pure_h = cv2.morphologyEx(mask, cv2.MORPH_OPEN, h_kernel)
+        pure_v = cv2.morphologyEx(mask, cv2.MORPH_OPEN, v_kernel)
 
-        # Допуск вокруг координаты линии для определения границ
-        tol = max(2, int(self.padding), int(self.threshold_line))
+        return pure_h, pure_v
 
-        # Вертикальные границы
-        for row in range(n_rows):
-            y1 = max(int(y_coords[row]), 0)
-            y2 = min(int(y_coords[row + 1]), h)
-            if y2 <= y1:
-                continue
+    # ------------------------------------------------------------------
+    # Нахождение позиций линий
+    # ------------------------------------------------------------------
 
-            for col in range(n_cols - 1):
-                x_pos = int(x_coords[col + 1])
-                x1 = max(x_pos - tol, 0)
-                x2 = min(x_pos + tol + 1, w)
-                if x2 <= x1:
-                    continue
+    def _find_line_positions(self, mask: np.ndarray, axis: int) -> list[int]:
+        """Находит координаты центров линий по бинарной проекции маски.
 
-                roi = v_mask[y1:y2, x1:x2] > 0
-                rows_with_line = np.any(roi, axis=1)
+        Args:
+            mask: Бинарная маска линий.
+            axis: 0 — ищем позиции по X (вертикальные линии),
+                  1 — ищем позиции по Y (горизонтальные линии).
 
-                if (
-                    rows_with_line.size
-                    and float(rows_with_line.mean()) >= self.coverage_thr
-                ):
-                    vertical_gaps[row, col] = True
+        Returns:
+            Отсортированный список координат центров линий.
+        """
+        # np.any — линия считается присутствующей если хотя бы один пиксель ненулевой
+        proj = np.any(mask > 0, axis=axis).astype(np.uint8)
 
-        # Горизонтальные границы
-        for row in range(n_rows - 1):
-            y_pos = int(y_coords[row + 1])
-            y1 = max(y_pos - tol, 0)
-            y2 = min(y_pos + tol + 1, h)
-            if y2 <= y1:
-                continue
+        diff = np.diff(proj, prepend=0, append=0)
+        starts = np.where(diff == 1)[0]
+        ends = np.where(diff == -1)[0]
 
-            for col in range(n_cols):
-                x1 = max(int(x_coords[col]), 0)
-                x2 = min(int(x_coords[col + 1]), w)
-                if x2 <= x1:
-                    continue
+        centers = list(((starts + ends - 1) // 2).astype(int))
+        return self._filter_close_positions(centers)
 
-                roi = h_mask[y1:y2, x1:x2] > 0
-                cols_with_line = np.any(roi, axis=0)
+    def _filter_close_positions(self, positions: list[int]) -> list[int]:
+        """Убирает позиции ближе чем min_cell друг к другу (артефакт толстой линии)."""
+        result: list[int] = []
+        for pos in positions:
+            if not result or pos - result[-1] >= self.min_cell:
+                result.append(pos)
+        return result
 
-                if (
-                    cols_with_line.size
-                    and float(cols_with_line.mean()) >= self.coverage_thr
-                ):
-                    horizontal_gaps[row, col] = True
+    # ------------------------------------------------------------------
+    # Построение ячеек: Union-Find
+    # ------------------------------------------------------------------
 
-        return vertical_gaps, horizontal_gaps
-
-    def _extract_merged_cols(
+    def _build_cells(
         self,
-        x_coords: list[int],
-        y_coords: list[int],
-        table_bbox: tuple[int, int, int, int],
-        vertical_gaps: np.ndarray,
+        x: int,
+        y: int,
+        pure_h: np.ndarray,
+        pure_v: np.ndarray,
+        merge_mode: str | None,
     ) -> list[Cell]:
-        """Извлекает ячейки с объединением по столбцам"""
-        cells = []
-        n_rows = len(y_coords) - 1
+        """Строит ячейки таблицы методом Union-Find.
 
-        for row in range(n_rows):
-            col = 0
-            while col < len(x_coords) - 1:
-                colspan = 1
+        Args:
+            x: X-смещение таблицы на исходном изображении.
+            y: Y-смещение таблицы на исходном изображении.
+            pure_h: Маска горизонтальных линий.
+            pure_v: Маска вертикальных линий.
+            merge_mode: Режим объединения: "cols", "rows", "all" или None.
 
-                # Определяем сколько столбцов можно объединить
-                while (
-                    col + colspan < len(x_coords) - 1
-                    and not vertical_gaps[row, col + colspan - 1]
-                ):
-                    colspan += 1
+        Returns:
+            Список ячеек, отсортированных по (row, col).
+        """
+        xs = self._find_line_positions(pure_v, axis=0)
+        ys = self._find_line_positions(pure_h, axis=1)
 
-                bbox = BBox(
-                    x_min=x_coords[col] + table_bbox[0],
-                    y_min=y_coords[row] + table_bbox[1],
-                    x_max=x_coords[col + colspan] + table_bbox[0],
-                    y_max=y_coords[row + 1] + table_bbox[1],
-                )
+        if len(xs) < 2:
+            return []
 
-                cells.append(
-                    Cell(row=row, col=col, bbox=bbox, colspan=colspan, rowspan=1)
-                )
+        ys = self._add_missing_bottom_border(ys, pure_h.shape[0])
 
-                col += colspan
+        if len(ys) < 2:
+            return []
 
+        n_rows = len(ys) - 1
+        n_cols = len(xs) - 1
+
+        parent = list(range(n_rows * n_cols))
+
+        def cell_id(row: int, col: int) -> int:
+            return row * n_cols + col
+
+        def find(node: int) -> int:
+            while parent[node] != node:
+                parent[node] = parent[parent[node]]
+                node = parent[node]
+            return node
+
+        def union(a: int, b: int) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        if merge_mode in (_MERGE_COLS, _MERGE_ALL):
+            for r in range(n_rows):
+                for c in range(n_cols - 1):
+                    if not self._has_vertical_separator(pure_v, xs, ys, r, c):
+                        union(cell_id(r, c), cell_id(r, c + 1))
+
+        if merge_mode in (_MERGE_ROWS, _MERGE_ALL):
+            for r in range(n_rows - 1):
+                for c in range(n_cols):
+                    if not self._has_horizontal_separator(pure_h, xs, ys, r, c):
+                        union(cell_id(r, c), cell_id(r + 1, c))
+
+        groups: dict[int, list[tuple[int, int]]] = {}
+        for r in range(n_rows):
+            for c in range(n_cols):
+                groups.setdefault(find(cell_id(r, c)), []).append((r, c))
+
+        cells: list[Cell] = []
+        for members in groups.values():
+            cells.extend(self._group_to_cells(members, xs, ys, x, y))
+
+        cells.sort(key=lambda cell: (cell.row, cell.col))
         return cells
 
-    def _extract_merged_rows(
+    def _add_missing_bottom_border(self, ys: list[int], roi_height: int) -> list[int]:
+        """Добавляет нижнюю границу ROI если последняя строка не имеет нижней линии.
+
+        Обрабатывает случай:
+            |--------|------|-------|
+            |        |      |       |   <- нет нижней линии
+
+        Args:
+            ys: Найденные Y-позиции горизонтальных линий.
+            roi_height: Высота ROI.
+
+        Returns:
+            Обновлённый список Y-позиций.
+        """
+        if ys and ys[-1] < roi_height - self.min_cell:
+            return ys + [roi_height]
+        return ys
+
+    def _group_to_cells(
         self,
-        x_coords: list[int],
-        y_coords: list[int],
-        table_bbox: tuple[int, int, int, int],
-        horizontal_gaps: np.ndarray,
+        members: list[tuple[int, int]],
+        xs: list[int],
+        ys: list[int],
+        offset_x: int,
+        offset_y: int,
     ) -> list[Cell]:
-        """Извлекает ячейки с объединением по строкам"""
-        cells = []
-        n_cols = len(x_coords) - 1
+        """Преобразует группу атомарных ячеек в одну или несколько Cell.
 
-        for col in range(n_cols):
-            row = 0
-            while row < len(y_coords) - 1:
-                rowspan = 1
+        Если группа прямоугольная — возвращает одну объединённую ячейку.
+        Иначе — каждую атомарную ячейку отдельно (не прямоугольный colspan не поддерживается).
 
-                # Определяем сколько строк можно объединить
-                while (
-                    row + rowspan < len(y_coords) - 1
-                    and not horizontal_gaps[row + rowspan - 1, col]
-                ):
-                    rowspan += 1
+        Args:
+            members: Список (row, col) атомарных ячеек в группе.
+            xs: X-координаты сетки.
+            ys: Y-координаты сетки.
+            offset_x: X-смещение таблицы.
+            offset_y: Y-смещение таблицы.
 
-                bbox = BBox(
-                    x_min=x_coords[col] + table_bbox[0],
-                    y_min=y_coords[row] + table_bbox[1],
-                    x_max=x_coords[col + 1] + table_bbox[0],
-                    y_max=y_coords[row + rowspan] + table_bbox[1],
+        Returns:
+            Список Cell.
+        """
+        rows = sorted({r for r, _ in members})
+        cols = sorted({c for _, c in members})
+        is_rectangular = len(members) == len(rows) * len(cols)
+
+        if not is_rectangular:
+            return [
+                Cell(
+                    bbox=BBox(
+                        x_min=xs[c] + offset_x,
+                        y_min=ys[r] + offset_y,
+                        x_max=xs[c + 1] + offset_x,
+                        y_max=ys[r + 1] + offset_y,
+                    ),
+                    row=r,
+                    col=c,
+                    colspan=1,
+                    rowspan=1,
+                    text="",
                 )
+                for r, c in members
+            ]
 
-                cells.append(
-                    Cell(row=row, col=col, bbox=bbox, colspan=1, rowspan=rowspan)
-                )
+        min_r, max_r = rows[0], rows[-1]
+        min_c, max_c = cols[0], cols[-1]
 
-                row += rowspan
+        return [
+            Cell(
+                bbox=BBox(
+                    x_min=xs[min_c] + offset_x,
+                    y_min=ys[min_r] + offset_y,
+                    x_max=xs[max_c + 1] + offset_x,
+                    y_max=ys[max_r + 1] + offset_y,
+                ),
+                row=min_r,
+                col=min_c,
+                colspan=len(cols),
+                rowspan=len(rows),
+                text="",
+            )
+        ]
 
-        return cells
+    # ------------------------------------------------------------------
+    # Проверка наличия разделителей между ячейками
+    # ------------------------------------------------------------------
 
-    def _extract_fully_merged(
+    def _has_vertical_separator(
         self,
-        x_coords: list[int],
-        y_coords: list[int],
-        table_bbox: tuple[int, int, int, int],
-        vertical_gaps: np.ndarray,
-        horizontal_gaps: np.ndarray,
-    ) -> list[Cell]:
-        """Извлекает полностью объединенные ячейки"""
-        # Извлекаем отдельно по столбцам и строкам
-        col_cells = self._extract_merged_cols(
-            x_coords, y_coords, table_bbox, vertical_gaps
-        )
-        row_cells = self._extract_merged_rows(
-            x_coords, y_coords, table_bbox, horizontal_gaps
-        )
+        pure_v: np.ndarray,
+        xs: list[int],
+        ys: list[int],
+        row: int,
+        col: int,
+    ) -> bool:
+        """Проверяет наличие вертикальной линии между col и col+1 в строке row."""
+        x_pos = xs[col + 1]
+        y0 = ys[row] + self.padding
+        y1 = ys[row + 1] - self.padding
+        x0 = max(x_pos - self.threshold_line, 0)
+        x1 = min(x_pos + self.threshold_line + 1, pure_v.shape[1])
 
-        # Создаем словарь для быстрого доступа к ячейкам по столбцам
-        col_cells_dict = {(cell.row, cell.col): cell for cell in col_cells}
+        if y1 <= y0 or x1 <= x0:
+            return True
 
-        # Объединяем результаты
-        merged_cells = []
+        region = pure_v[y0:y1, x0:x1]
+        min_length = max(1, int((y1 - y0) * 0.1))
+        return self._has_continuous_line(region, min_length, axis=0, min_density=self.coverage_thr)
 
-        for row_cell in row_cells:
-            key = (row_cell.row, row_cell.col)
+    def _has_horizontal_separator(
+        self,
+        pure_h: np.ndarray,
+        xs: list[int],
+        ys: list[int],
+        row: int,
+        col: int,
+    ) -> bool:
+        """Проверяет наличие горизонтальной линии между row и row+1 в столбце col."""
+        y_pos = ys[row + 1]
+        x0 = xs[col] + self.padding
+        x1 = xs[col + 1] - self.padding
+        y0 = max(y_pos - self.threshold_line, 0)
+        y1 = min(y_pos + self.threshold_line + 1, pure_h.shape[0])
 
-            if key in col_cells_dict:
-                col_cell = col_cells_dict[key]
+        if x1 <= x0 or y1 <= y0:
+            return True
 
-                merged_cells.append(
-                    Cell(
-                        row=row_cell.row,
-                        col=row_cell.col,
-                        bbox=BBox(
-                            x_min=col_cell.bbox.x_min,
-                            y_min=row_cell.bbox.y_min,
-                            x_max=col_cell.bbox.x_max,
-                            y_max=row_cell.bbox.y_max,
-                        ),
-                        colspan=col_cell.colspan,
-                        rowspan=row_cell.rowspan,
-                    )
-                )
+        region = pure_h[y0:y1, x0:x1]
+        min_length = max(1, int((x1 - x0) * 0.1))
+        return self._has_continuous_line(region, min_length, axis=1, min_density=self.coverage_thr)
 
-        return merged_cells
+    def _has_continuous_line(
+        self,
+        region: np.ndarray,
+        min_length: int,
+        axis: int,
+        min_density: float = 0.6,
+    ) -> bool:
+        """Проверяет наличие непрерывной линии с достаточной плотностью.
+
+        Args:
+            region: Область для проверки.
+            min_length: Минимальная длина непрерывного участка.
+            axis: 0 — вертикальная линия, 1 — горизонтальная.
+            min_density: Минимальная доля белых пикселей (0-1).
+
+        Returns:
+            True если найдена непрерывная линия с достаточной плотностью.
+        """
+        if region.size == 0:
+            return False
+
+        projection = np.max(region, axis=1) if axis == 0 else np.max(region, axis=0)
+        binary = (projection > 127).astype(np.uint8)
+
+        max_run = current_run = total = 0
+        for px in binary:
+            if px:
+                current_run += 1
+                total += 1
+                max_run = max(max_run, current_run)
+            else:
+                current_run = 0
+
+        if max_run < min_length:
+            return False
+
+        return total / len(binary) >= min_density
