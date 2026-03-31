@@ -13,7 +13,6 @@ from app.domain.value_objects.period import Period
 from app.infrastructure.persistence.diskcache_process_repository import (
     DiskCacheProcessRepository,
 )
-from vision_core.analizer.page_analyzer import PageAnalyzer
 from vision_core.detector.paragraph_detector import ParagraphDetector
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.detector.table_detector import TableDetector
@@ -175,7 +174,3 @@ def paragraph_detector() -> ParagraphDetector:
     return ParagraphDetector()
 
 
-@pytest.fixture
-def page_analyzer() -> PageAnalyzer:
-    """Экземпляр PageAnalyzer"""
-    return PageAnalyzer()

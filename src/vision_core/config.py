@@ -162,6 +162,8 @@ class VisionCoreConfig:
     )
 
     paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
+    dpi: int = 300
+    ocr_confidence_threshold: float = 0.7
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":

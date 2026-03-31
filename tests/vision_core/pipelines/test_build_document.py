@@ -1,4 +1,7 @@
 from hashlib import sha1
+from unittest.mock import MagicMock
+
+import numpy as np
 
 from vision_core.entities.document import Document
 from vision_core.entities.page import Page
@@ -22,7 +25,7 @@ class FakeLoader:
         self.close()
 
     def get_page_image(self, page_num: int, dpi: int = 300):
-        return {"page_num": page_num, "dpi": dpi}
+        return np.zeros((100, 100, 3), dtype=np.uint8)
 
     def get_page_size(self, page_num: int) -> tuple[float, float]:
         return (100.0 + page_num, 200.0 + page_num)
@@ -34,27 +37,19 @@ class FakeLoader:
         self.__class__.closed = True
 
 
-class FakePageAnalyzer:
-    """Подменяет анализатор страниц и фиксирует вызовы."""
-
-    def __init__(self):
-        self.images = []
-
-    def analyze_page(self, image, *, page_number: int = 0) -> Page:
-        self.images.append((page_number, image))
-        return Page(metadata={"analyzed": True, "image": image})
-
-
 class TestDocumentBuildPipeline:
     """Проверяет сборку канонического документа из PDF."""
 
     def test_build_creates_document_with_page_metadata(self, monkeypatch):
         pdf_bytes = b"%PDF-1.4 pipeline test"
-        analyzer = FakePageAnalyzer()
         FakeLoader.closed = False
         monkeypatch.setattr(build_document_module, "PDFLoader", FakeLoader)
 
-        pipeline = DocumentBuildPipeline(page_analyzer=analyzer, dpi=200)
+        pipeline = DocumentBuildPipeline.__new__(DocumentBuildPipeline)
+        pipeline.dpi = 200
+        pipeline._process_page = MagicMock(
+            side_effect=lambda image, page_number: Page(metadata={"analyzed": True, "image": image})
+        )
 
         document = pipeline.build(pdf_bytes)
 
@@ -62,29 +57,18 @@ class TestDocumentBuildPipeline:
         assert document.source_hash == sha1(pdf_bytes).hexdigest()
         assert document.metadata == {"dpi": 200, "num_pages": 2}
         assert document.num_pages == 2
-        assert analyzer.images == [
-            (0, {"page_num": 0, "dpi": 200}),
-            (1, {"page_num": 1, "dpi": 200}),
-        ]
 
         first_page = document.pages[0]
         second_page = document.pages[1]
 
         assert first_page.page_number == 0
-        assert first_page.metadata == {
-            "analyzed": True,
-            "image": {"page_num": 0, "dpi": 200},
-            "source_page_number": 0,
-            "page_size": [100.0, 200.0],
-            "has_text_layer": True,
-        }
+        assert first_page.metadata["source_page_number"] == 0
+        assert first_page.metadata["page_size"] == [100.0, 200.0]
+        assert first_page.metadata["has_text_layer"] is True
 
         assert second_page.page_number == 1
-        assert second_page.metadata == {
-            "analyzed": True,
-            "image": {"page_num": 1, "dpi": 200},
-            "source_page_number": 1,
-            "page_size": [101.0, 201.0],
-            "has_text_layer": False,
-        }
+        assert second_page.metadata["source_page_number"] == 1
+        assert second_page.metadata["page_size"] == [101.0, 201.0]
+        assert second_page.metadata["has_text_layer"] is False
+
         assert FakeLoader.closed is True

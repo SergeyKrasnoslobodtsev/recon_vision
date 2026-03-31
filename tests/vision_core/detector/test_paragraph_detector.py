@@ -5,11 +5,14 @@ import numpy as np
 import pytest
 from loguru import logger
 
-from vision_core.analizer.page_analyzer import PageAnalyzer
 from vision_core.config import ParagraphDetectorConfig
 from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.detector.table_detector import TableDetector
 from vision_core.ocr.base import OcrResult
+from vision_core.ocr.paddle_ocr import PaddleOcrEngine
+from vision_core.postprocessor.cell_text_filler import CellTextFiller
+from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 
 # command pytest tests/vision_core/detector/test_paragraph_detector.py -v -s
 
@@ -37,11 +40,15 @@ class TestParagraphDetector:
         pdf_path: Path,
         output_dir: Path,
         pdf_loader_single_page: np.ndarray,
-        page_analyzer: PageAnalyzer,
+        preprocessor_img: ImagePreprocessor,
+        table_detector: TableDetector,
+        paragraph_detector: ParagraphDetector,
     ):
         """Тестирует пошаговую детекцию абзацев с debug-визуализацией."""
 
         observer = DebugImageObserver(output_dir=output_dir)
+        ocr_engine = PaddleOcrEngine()
+        cell_text_filler = CellTextFiller()
 
         if not pdf_path.exists():
             pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
@@ -56,7 +63,7 @@ class TestParagraphDetector:
 
             pdf_bytes = test_file.read_bytes()
             original = pdf_loader_single_page(pdf_bytes)
-            processed = page_analyzer._preprocess_image(original)
+            processed = preprocessor_img.process(original)
             observer.on_debug_image(
                 original,
                 processed,
@@ -65,10 +72,12 @@ class TestParagraphDetector:
                 page_number=0,
             )
 
-            tables = page_analyzer._detect_tables(processed)
-            ocr_results = page_analyzer._recognize_text(cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR))
-            page_analyzer._fill_table_cells(tables, ocr_results)
-            filtered_ocr_results = page_analyzer._exclude_table_text(ocr_results, tables)
+            tables = table_detector.detect_tables(processed)
+            ocr_results = ocr_engine.predict(cv2.cvtColor(processed, cv2.COLOR_GRAY2BGR))
+            ocr_results = ocr_results[0] if ocr_results and ocr_results[0] else []
+
+            cell_text_filler.fill_cells(tables, ocr_results)
+            filtered_ocr_results = cell_text_filler.exclude_table_text(ocr_results, tables)
 
             observer.on_detected_boxes(
                 original,
@@ -80,12 +89,12 @@ class TestParagraphDetector:
                 fill=(144, 238, 144, 96),
             )
 
-            raw_clusters = page_analyzer.paragraph_detector._clusterize(filtered_ocr_results, processed.shape[:2])
-            merged_clusters = page_analyzer.paragraph_detector._merge_nested_clusters(raw_clusters)
+            raw_clusters = paragraph_detector._clusterize(filtered_ocr_results, processed.shape[:2])
+            merged_clusters = paragraph_detector._merge_nested_clusters(raw_clusters)
             observer.on_detected_boxes(
                 original,
                 boxes=[
-                    page_analyzer.paragraph_detector._cluster_bbox(cluster).to_tuple() for cluster in merged_clusters
+                    paragraph_detector._cluster_bbox(cluster).to_tuple() for cluster in merged_clusters
                 ],
                 stage="paragraph_hdbscan_clusters",
                 prefix=test_file.stem,
@@ -94,7 +103,7 @@ class TestParagraphDetector:
                 fill=(255, 200, 120, 96),
             )
 
-            paragraphs = page_analyzer.paragraph_detector.detect_paragraphs(
+            paragraphs = paragraph_detector.detect_paragraphs(
                 filtered_ocr_results,
                 processed.shape[:2],
             )
