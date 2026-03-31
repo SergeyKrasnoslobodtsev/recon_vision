@@ -72,7 +72,7 @@ class TablePreprocessor:
 
         intersec = cv2.bitwise_and(h_mask, v_mask)
         mask = cv2.bitwise_or(h_mask, v_mask)
-        regions = self._raw_bouding_boxes(mask)
+        regions = self._raw_bounding_boxes(mask)
 
         cleaned_h_mask = np.zeros_like(h_mask, dtype=np.uint8)
         cleaned_v_mask = np.zeros_like(v_mask, dtype=np.uint8)
@@ -166,7 +166,7 @@ class TablePreprocessor:
 
         return output_mask
 
-    def _raw_bouding_boxes(self, mask: np.ndarray):
+    def _raw_bounding_boxes(self, mask: np.ndarray):
         h, w = mask.shape
         contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
         valid_boxes: list[tuple[int, int, int, int]] = []
