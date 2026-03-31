@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from paddleocr import PaddleOCR
 
-from vision_core.config import VisionCoreConfig
+from vision_core.config import PaddleOcrConfig
 from vision_core.ocr.base import OcrEngine, OcrResult
 
 
@@ -14,23 +14,20 @@ class PaddleOcrEngine(OcrEngine):
     Поддерживает пакетную обработку и итеративный режим для больших объёмов данных.
 
     Attributes:
-        cfg: Конфигурация PaddleOCR из VisionCoreConfig.
+        cfg: Конфигурация PaddleOCR.
         ocr: Экземпляр PaddleOCR для выполнения распознавания.
     """
 
-    def __init__(self, config: VisionCoreConfig | None = None):
+    def __init__(self, config: PaddleOcrConfig | None = None):
         """Инициализирует движок PaddleOCR.
 
         Args:
-            config: Конфигурация VisionCore. Если None, используется конфигурация по умолчанию.
+            config: Конфигурация PaddleOCR. Если None, используется конфигурация по умолчанию.
 
         Raises:
             FileNotFoundError: Если директории с моделями распознавания или детекции не найдены.
         """
-        if config is None:
-            config = VisionCoreConfig()
-
-        self.cfg = config.paddleocr
+        self.cfg = config or PaddleOcrConfig()
 
         if not Path(self.cfg.text_detection_model_dir).exists():
             raise FileNotFoundError(
