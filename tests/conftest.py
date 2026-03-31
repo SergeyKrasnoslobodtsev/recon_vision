@@ -17,7 +17,6 @@ from vision_core.detector.paragraph_detector import ParagraphDetector
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.detector.table_detector import TableDetector
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
-from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -147,12 +146,6 @@ def preprocessor_table() -> TablePreprocessor:
     return TablePreprocessor()
 
 
-@pytest.fixture
-def preprocessor_paragraph() -> ParagraphPreprocessor:
-    """Экземпляр ParagraphPreprocessor"""
-    return ParagraphPreprocessor()
-
-
 ### Detectors
 
 
@@ -172,5 +165,3 @@ def cell_detector() -> TableCellDetector:
 def paragraph_detector() -> ParagraphDetector:
     """Экземпляр ParagraphDetector"""
     return ParagraphDetector()
-
-
