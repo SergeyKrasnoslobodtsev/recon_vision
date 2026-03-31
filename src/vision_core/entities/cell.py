@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .bbox import BBox
 
@@ -10,7 +10,6 @@ class Cell(BaseModel):
     rowspan: int = 1
     value: str | None = None
     bbox: BBox
-    from pydantic import Field
 
     blobs: list[BBox] = Field(default_factory=list)
 
