@@ -8,6 +8,7 @@ from vision_core.entities.paragraph import Paragraph, ParagraphType
 from vision_core.ocr.base import OcrResult
 
 
+# TODO: Требует рефакторинг для улучшения читаемости и производительности, особенно в части кластеризации и слияния.
 class ParagraphDetector:
     """Детектирует текстовые параграфы на изображении через кластеризацию OCR-боксов.
 
@@ -21,10 +22,10 @@ class ParagraphDetector:
         """Инициализирует детектор с конфигурацией или значениями по умолчанию.
 
         Args:
-            config: Конфигурация детектора (eps, min_samples и пр.).
+            config: Конфигурация детектора. Если None, используются значения по умолчанию.
         """
         self.cfg = config or ParagraphDetectorConfig()
-        logger.debug(f"ParagraphDetector инициализирован: eps=, min_samples={self.cfg.min_cluster_size}")
+        logger.debug(f"ParagraphDetector инициализирован: min_samples={self.cfg.min_cluster_size}")
 
     def detect_paragraphs(
         self,
