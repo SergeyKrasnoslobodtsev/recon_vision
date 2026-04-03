@@ -20,28 +20,39 @@ class TableDetector:
     ):
         """
         Args:
-            preprocessor_config: Конфигурация для предобработки таблиц. Если None, используется конфигурация по умолчанию.
-            table_detector_config: Конфигурация для детектора таблиц. Если None, используется конфигурация по умолчанию.
+            preprocessor_config: Конфигурация для предобработки таблиц.
+                Если None, используется конфигурация по умолчанию.
+            table_detector_config: Конфигурация для детектора таблиц.
+                Если None, используется конфигурация по умолчанию.
             cell_detector_config: Конфигурация для детектора ячеек. Если None, используется конфигурация по умолчанию.
         """
         self.cfg = table_detector_config or TableDetectorConfig()
-
-        self._table_mask: np.ndarray | None = None
         self.preprocessor = TablePreprocessor(preprocessor_config)
         self.table_cell_detector = TableCellDetector(cell_detector_config)
 
+    def create_table_mask(self, image: np.ndarray) -> np.ndarray:
+        """Создаёт маску таблиц для текущего изображения.
+
+        Args:
+            image: Изображение страницы.
+
+        Returns:
+            np.ndarray: Бинарная маска таблиц.
+        """
+        return self.preprocessor.create_table_mask(image)
+
     def detect_tables(self, image: np.ndarray) -> list[Table]:
-        # Создаем маску таблицы
-        self._table_mask = self.preprocessor.create_table_mask(image)
+        # Создаем маску таблицы локально для текущего изображения.
+        table_mask = self.create_table_mask(image)
 
         # Извлекаем bounding boxes таблиц
-        table_bboxes = self.extract_raw_tables(self._table_mask)
+        table_bboxes = self.extract_raw_tables(table_mask)
 
         tables: list[Table] = []
 
         for idx, bbox in enumerate(table_bboxes):
             # Детектируем ячейки внутри таблицы
-            roi_mask = bbox.roi(self._table_mask)
+            roi_mask = bbox.roi(table_mask)
             cells = self.table_cell_detector.extract_cells(
                 roi_mask,
                 bbox.to_tuple(),
@@ -64,14 +75,21 @@ class TableDetector:
 
         return tables
 
-    def get_table_line_mask(self, table: Table, padding: int = 0):
+    def get_table_line_mask(self, table: Table, table_mask: np.ndarray, padding: int = 0) -> np.ndarray:
         """Возвращает маску линий таблицы внутри заданной таблицы.
+
         Мы можем использовать эту маску для удаления линий перед распознаванием текста.
         Также можно указать padding вокруг линий, чтобы захватить больше пространства.
+
+        Args:
+            table: Таблица, для которой нужно получить маску линий.
+            table_mask: Общая маска таблиц для текущего изображения.
+            padding: Дополнительный отступ вокруг bbox таблицы.
+
+        Returns:
+            np.ndarray: Маска линий внутри области таблицы.
         """
-        if self._table_mask is None:
-            raise ValueError("Маска таблиц не доступна. Сначала вызовите detect_tables()")
-        roi_mask = table.bbox.padding(padding).roi(self._table_mask)
+        roi_mask = table.bbox.padding(padding).roi(table_mask)
         return roi_mask
 
     def remove_table_lines(
@@ -80,6 +98,7 @@ class TableDetector:
         table: Table,
         fill_value: int = 255,
         padding: int = 2,
+        table_mask: np.ndarray | None = None,
     ) -> np.ndarray:
         """
         Удаляет линии таблицы из изображения.
@@ -95,12 +114,14 @@ class TableDetector:
             table: Объект таблицы
             fill_value: Значение для заполнения удаленных линий
             padding: Отступ вокруг линий для удаления
+            table_mask: Предвычисленная маска таблиц для текущего изображения.
 
         Returns:
             Изображение с удаленными линиями таблицы
         """
         result = image.copy()
-        line_mask = self.get_table_line_mask(table)
+        current_table_mask = table_mask if table_mask is not None else self.create_table_mask(image)
+        line_mask = self.get_table_line_mask(table, current_table_mask)
         roi = table.bbox.roi(result)
 
         if roi.shape[:2] != line_mask.shape:
