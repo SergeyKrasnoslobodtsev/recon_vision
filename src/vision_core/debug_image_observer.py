@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
+from vision_core.entities.page import Page
 from vision_core.utils.drawer import Drawer
 
 
@@ -110,6 +111,62 @@ class DebugImageObserver:
         output_path = self._build_output_path(stage=stage, prefix=prefix, page_number=page_number)
         Drawer(image).draw_labeled_boxes(items, color=color, width=width, fill=fill).save(output_path)
         logger.debug(f"Labeled boxes saved: {stage} -> {output_path}")
+
+    def on_canonical_page(
+        self,
+        image: np.ndarray,
+        *,
+        page: Page,
+        stage: str,
+        prefix: str = "",
+        page_number: int | None = None,
+    ) -> None:
+        """Сохраняет визуализацию канонической страницы документа.
+
+        Отрисовывает только области text blobs из канонической структуры `Page`.
+        Blobs параграфов подсвечиваются полупрозрачным оранжевым фоном, а blobs
+        ячеек таблиц — полупрозрачным синим. Рамки структур и распознанный текст
+        поверх изображения не рисуются.
+
+        Args:
+            image: Исходное изображение страницы.
+            page: Каноническая страница документа.
+            stage: Название debug-этапа.
+            prefix: Префикс для имени файла.
+            page_number: Явный номер страницы для имени файла. Если не задан,
+                используется `page.page_number`.
+        """
+        resolved_page_number = page.page_number if page_number is None else page_number
+        output_path = self._build_output_path(
+            stage=stage,
+            prefix=prefix,
+            page_number=resolved_page_number,
+        )
+        drawer = Drawer(image)
+
+        for paragraph in page.paragraphs:
+            if paragraph.is_empty or not paragraph.blobs:
+                continue
+            drawer.draw_boxes(
+                [blob.to_tuple() for blob in paragraph.blobs],
+                color="darkorange",
+                width=0,
+                fill=(255, 165, 0, 96),
+            )
+
+        for table in page.tables:
+            for cell in table.cells:
+                if not cell.blobs:
+                    continue
+                drawer.draw_boxes(
+                    [blob.to_tuple() for blob in cell.blobs],
+                    color="blue",
+                    width=0,
+                    fill=(30, 144, 255, 96),
+                )
+
+        drawer.save(output_path)
+        logger.debug(f"Canonical page saved: {stage} -> {output_path}")
 
     def _build_output_path(self, *, stage: str, prefix: str, page_number: int) -> Path:
         stage_dir = self.output_dir / stage
