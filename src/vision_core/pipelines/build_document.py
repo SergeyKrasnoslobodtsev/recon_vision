@@ -15,6 +15,8 @@ from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.ocr.base import OcrResult
 from vision_core.ocr.paddle_ocr import PaddleOcrEngine
 from vision_core.postprocessor.cell_text_filler import CellTextFiller
+from vision_core.postprocessor.table_continuation_linker import TableContinuationLinker
+from vision_core.postprocessor.table_id_assigner import TableIdAssigner
 from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 
@@ -43,6 +45,8 @@ class DocumentBuildPipeline:
         self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
         self.paragraph_detector = ParagraphDetector(cfg.paragraph_detector)
         self.cell_text_filler = CellTextFiller(cfg.ocr_confidence_threshold)
+        self.continuation_linker = TableContinuationLinker()
+        self.table_id_assigner = TableIdAssigner()
         self.dpi = cfg.dpi
 
     def build(self, pdf_bytes: bytes) -> Document:
@@ -69,6 +73,9 @@ class DocumentBuildPipeline:
                     }
                 )
                 pages.append(page)
+
+        self.table_id_assigner.assign(pages)
+        self.continuation_linker.link(pages)
 
         return Document.from_pdf_bytes(
             pdf_bytes=pdf_bytes,
@@ -120,6 +127,7 @@ class DocumentBuildPipeline:
         bgr_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         results = self.ocr_engine.predict(bgr_image)
         if not results or not results[0]:
+            logger.warning("OCR не распознал текст на странице.")
             return []
         logger.debug(
             f"OCR: распознано {len(results[0])} блоков, "
