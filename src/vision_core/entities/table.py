@@ -14,6 +14,7 @@ class Table(BaseModel):
     cells: list["Cell"] = []
     start_page: int = 0
     end_page: int = 0
+    continuation_of: str | None = None
 
     @property
     def area(self) -> float:
@@ -47,6 +48,7 @@ class Table(BaseModel):
             cells=[cell.padding(pixel) for cell in self.cells],
             start_page=self.start_page,
             end_page=self.end_page,
+            continuation_of=self.continuation_of,
         )
 
     def intersect(self, other: "Table") -> float:

@@ -82,7 +82,8 @@ class DocumentMarkdownExporter:
                 separator = "| " + " | ".join("---" for _ in row_cells) + " |"
                 lines.append(separator)
 
-        table_info = f"<!-- table_id={table.id} rows={table.num_rows} cols={table.num_cols} -->"
+        continuation = f" continuation_of={table.continuation_of}" if table.continuation_of else ""
+        table_info = f"<!-- table_id={table.id} rows={table.num_rows} cols={table.num_cols}{continuation} -->"
         return table_info + "\n" + "\n".join(lines)
 
     def _build_grid(self, table: Table) -> list[list[str]]:
