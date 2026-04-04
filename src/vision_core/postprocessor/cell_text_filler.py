@@ -32,7 +32,7 @@ class CellTextFiller:
                     if not cell.bbox.contains_center(BBox.from_tuple(ocr_item.bbox)):
                         continue
                     texts.append(ocr_item.text)
-                    cell.blobs.append(ocr_item.bbox)
+                    cell.blobs.append(BBox.from_tuple(ocr_item.bbox))
                 cell.value = "\n".join(texts)
 
     def exclude_table_text(
@@ -53,9 +53,7 @@ class CellTextFiller:
             return ocr_results
 
         return [
-            item for item in ocr_results
-            if not any(
-                table.bbox.contains_center(BBox.from_tuple(item.bbox))
-                for table in tables
-            )
+            item
+            for item in ocr_results
+            if not any(table.bbox.contains_center(BBox.from_tuple(item.bbox)) for table in tables)
         ]
