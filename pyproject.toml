@@ -22,6 +22,7 @@ dependencies = [
     "super-image>=0.2.0",
     "scikit-learn>=1.6.1",
     "matplotlib>=3.9.4",
+    "llama-cpp-python>=0.3.20",
 ]
 
 [project.optional-dependencies]
