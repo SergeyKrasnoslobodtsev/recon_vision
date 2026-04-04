@@ -23,16 +23,16 @@ class ImagePreprocessor:
             gray = image.copy()
 
         normalized, _ = self._normalize_background(gray, kernel_size=self.cfg.kernel_size_morph)
-        processed = self._darken_light_strokes(
-            normalized,
-            denoise_h=self.cfg.denoise_h,
-            clip_limit=self.cfg.clip_limit,
-            tile_size=self.cfg.tile_size,
-            kernel_size=self.cfg.kernel_size,
-            blackhat_gain=self.cfg.blackhat_gain,
-        )
+        # processed = self._darken_light_strokes(
+        #     normalized,
+        #     denoise_h=self.cfg.denoise_h,
+        #     clip_limit=self.cfg.clip_limit,
+        #     tile_size=self.cfg.tile_size,
+        #     kernel_size=self.cfg.kernel_size,
+        #     blackhat_gain=self.cfg.blackhat_gain,
+        # )
 
-        return processed
+        return normalized
 
     def _darken_light_strokes(
         self,
