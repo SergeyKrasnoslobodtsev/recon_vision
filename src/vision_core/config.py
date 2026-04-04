@@ -145,7 +145,7 @@ class ParagraphDetectorConfig:
         min_cluster_size: Минимальный размер кластера для объединения выделенных слов в параграф
     """
 
-    min_cluster_size: int = 3
+    min_cluster_size: int = 2
 
 
 @dataclass
@@ -163,8 +163,8 @@ class VisionCoreConfig:
     )
 
     paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
-    dpi: int = 300
-    ocr_confidence_threshold: float = 0.7
+    dpi: int = 200
+    ocr_confidence_threshold: float = 0.5
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":
