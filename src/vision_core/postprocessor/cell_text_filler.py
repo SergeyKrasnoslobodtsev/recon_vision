@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from loguru import logger
+
 from vision_core.entities.bbox import BBox
 from vision_core.entities.table import Table
 from vision_core.ocr.base import OcrResult
@@ -23,7 +25,13 @@ class CellTextFiller:
             tables: Список таблиц для заполнения.
             ocr_results: Результаты OCR со всего изображения.
         """
+        if not tables:
+            logger.warning("Нет таблиц для заполнения, пропускаем этап cell text filling.")
+            return
+
         for table in tables:
+            logger.debug(f"Заполнение ячеек для таблицы {table.id} с {len(table.cells)} ячейками...")
+            logger.debug("=" * 40)
             for cell in table.cells:
                 texts: list[str] = []
                 for ocr_item in ocr_results:
@@ -34,6 +42,9 @@ class CellTextFiller:
                     texts.append(ocr_item.text)
                     cell.blobs.append(BBox.from_tuple(ocr_item.bbox))
                 cell.value = "\n".join(texts)
+                logger.debug(f"R:{cell.row} C:{cell.col} - {cell.value}")
+            logger.debug("=" * 40)
+            logger.debug(f"Завершено заполнение таблицы {table.id}.")
 
     def exclude_table_text(
         self,
@@ -50,6 +61,7 @@ class CellTextFiller:
             Отфильтрованный список OCR-результатов.
         """
         if not tables:
+            logger.warning("Нет таблиц для исключения, пропускаем этап exclude table text.")
             return ocr_results
 
         return [

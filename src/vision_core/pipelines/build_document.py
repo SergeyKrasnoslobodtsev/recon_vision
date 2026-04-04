@@ -66,6 +66,8 @@ class DocumentBuildPipeline:
 
         with PDFLoader(pdf_bytes) as loader:
             for page_number in range(loader.num_pages):
+                logger.info(f"Обработка страницы {page_number} с dpi {self.dpi}...")
+
                 image = loader.get_page_image(page_number, dpi=self.dpi)
                 page = self._process_page(image, page_number)
                 page.page_number = page_number
@@ -77,6 +79,15 @@ class DocumentBuildPipeline:
                     }
                 )
                 pages.append(page)
+
+                logger.debug(
+                    f"Страница {page_number}: "
+                    f"{len(page.tables)} таблиц, "
+                    f"{len(page.paragraphs)} абзацев, "
+                    f"метаданные: {page.metadata}"
+                )
+
+                logger.info("Обработка страницы завершена.")
 
         self.table_id_assigner.assign(pages)
         self.continuation_linker.link(pages)
@@ -99,22 +110,36 @@ class DocumentBuildPipeline:
         Returns:
             Страница с таблицами, абзацами и метаданными.
         """
-        image, alignment_metadata = self.orientation_preprocessor.process(image)
-        image = self.image_preprocessor.process(image)
 
+        logger.info("Коррекция ориентации и наклона...")
+        image, alignment_metadata = self.orientation_preprocessor.process(image)
+        logger.info("Коррекция завершена.")
+
+        logger.info("Предобработка изображения...")
+        image = self.image_preprocessor.process(image)
+        logger.info("Предобработка завершена.")
+
+        logger.info("Детекция таблиц и ячеек...")
         tables = self.table_detector.detect_tables(image)
         logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
+        logger.info("Детекция таблиц и ячеек завершена.")
 
+        logger.info("Распознавание текста OCR...")
         ocr_results = self._run_ocr(image)
+        logger.info("Распознавание текста OCR завершено.")
 
+        logger.info("Заполнение ячеек текстом...")
         self.cell_text_filler.fill_cells(tables, ocr_results)
+        logger.info("Заполнение ячеек текстом завершено.")
 
+        logger.info("Детекция абзацев...")
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
 
         paragraphs = self.paragraph_detector.detect_paragraphs(
             filtered_ocr,
             image.shape[:2],
         )
+        logger.info("Детекция абзацев завершена.")
 
         return Page(
             tables=tables,

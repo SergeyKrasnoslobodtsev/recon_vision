@@ -24,6 +24,7 @@ class DebitCreditProcessor:
             pages: Страницы документа после row_splitter.split().
         """
         dc_cols_map = build_dc_cols_map(pages)
+        logger.debug(f"Колонки дебет/кредит для нормализации: {dc_cols_map}")
 
         for page in pages:
             for table in page.tables:

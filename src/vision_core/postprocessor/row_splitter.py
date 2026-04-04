@@ -6,7 +6,7 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
-from vision_core.postprocessor.dc_cols import build_dc_cols_map, is_dc_header
+from vision_core.postprocessor.dc_cols import build_dc_cols_map
 
 
 class RowSplitter:
@@ -30,6 +30,7 @@ class RowSplitter:
             page.tables = [self._split_table(table, dc_cols_map.get(table.id, set())) for table in page.tables]
 
     def _split_table(self, table: Table, dc_cols: set[int]) -> Table:
+        """Разбивает строки одной таблицы, возвращает новый объект Table."""
         if not dc_cols:
             return table
 
@@ -61,6 +62,7 @@ class RowSplitter:
         )
 
     def _count_splits(self, row_cells: list[Cell], dc_cols: set[int]) -> int:
+        """Возвращает число строк для разбивки по количеству blobs в DC-ячейках."""
         counts = [len(cell.blobs) for cell in row_cells if cell.col in dc_cols and cell.blobs]
         return max(counts, default=1)
 
@@ -70,6 +72,7 @@ class RowSplitter:
         dc_cols: set[int],
         n: int,
     ) -> list[float]:
+        """Вычисляет границы для разбивки строки на подстроки."""
         for cell in row_cells:
             if cell.col not in dc_cols or len(cell.blobs) != n:
                 continue
@@ -91,6 +94,7 @@ class RowSplitter:
         boundaries: list[float],
         row_offset: int,
     ) -> list[Cell]:
+        """Разбивает одну ячейку на n подъячеек по границам, возвращает список новых ячеек."""
         lines = (cell.value or "").split("\n")
         blobs = cell.blobs
 
@@ -131,6 +135,7 @@ class RowSplitter:
 
 
 def _copy_cell(cell: Cell, row: int) -> Cell:
+    """Создает копию ячейки с новым row-индексом, остальные атрибуты сохраняются."""
     return Cell(
         row=row,
         col=cell.col,
@@ -143,6 +148,7 @@ def _copy_cell(cell: Cell, row: int) -> Cell:
 
 
 def _assign_subrow(blob: BBox, boundaries: list[float]) -> int:
+    """Определяет индекс подстроки для данного blob по его вертикальному положению."""
     cy = (blob.y_min + blob.y_max) / 2
     for i, boundary in enumerate(boundaries):
         if cy < boundary:

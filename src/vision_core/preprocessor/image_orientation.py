@@ -6,6 +6,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from loguru import logger
 from paddleocr import DocImgOrientationClassification
 
 from vision_core.config import PageOrientationPreprocessorConfig
@@ -50,6 +51,7 @@ class PageOrientationPreprocessor:
         aligned_image = image.copy()
 
         orientation_deg, orientation_score = self.classify(image)
+        logger.debug(f"Ориентация страницы: {orientation_deg}° с точностью {orientation_score:.4f}")
         metadata["orientation_deg"] = orientation_deg
         metadata["orientation_score"] = orientation_score
 
@@ -58,6 +60,7 @@ class PageOrientationPreprocessor:
 
         deskew_angle_deg = self.deskew(aligned_image)
         aligned_image = rotate_image(aligned_image, deskew_angle_deg)
+        logger.debug(f"Угол наклона страницы: {deskew_angle_deg}°")
         metadata["deskew_angle_deg"] = deskew_angle_deg
 
         return aligned_image, metadata
