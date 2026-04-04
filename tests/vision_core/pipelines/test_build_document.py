@@ -86,7 +86,7 @@ class TestDocumentBuildPipeline:
         monkeypatch.setattr(build_document_module, "PDFLoader", FakeLoader)
 
         pipeline = DocumentBuildPipeline.__new__(DocumentBuildPipeline)
-        pipeline.dpi = 200
+        pipeline.dpi = 300
         pipeline.table_id_assigner = TableIdAssigner()
         pipeline.continuation_linker = MagicMock()
         pipeline.continuation_linker.link.side_effect = lambda pages: setattr(

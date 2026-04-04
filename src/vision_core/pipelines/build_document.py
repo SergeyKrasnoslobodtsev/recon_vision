@@ -15,6 +15,8 @@ from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.ocr.base import OcrResult
 from vision_core.ocr.paddle_ocr import PaddleOcrEngine
 from vision_core.postprocessor.cell_text_filler import CellTextFiller
+from vision_core.postprocessor.debit_credit_processor import DebitCreditProcessor
+from vision_core.postprocessor.row_splitter import RowSplitter
 from vision_core.postprocessor.table_continuation_linker import TableContinuationLinker
 from vision_core.postprocessor.table_id_assigner import TableIdAssigner
 from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
@@ -46,6 +48,8 @@ class DocumentBuildPipeline:
         self.paragraph_detector = ParagraphDetector(cfg.paragraph_detector)
         self.cell_text_filler = CellTextFiller(cfg.ocr_confidence_threshold)
         self.continuation_linker = TableContinuationLinker()
+        self.row_splitter = RowSplitter()
+        self.debit_credit_processor = DebitCreditProcessor()
         self.table_id_assigner = TableIdAssigner()
         self.dpi = cfg.dpi
 
@@ -76,6 +80,8 @@ class DocumentBuildPipeline:
 
         self.table_id_assigner.assign(pages)
         self.continuation_linker.link(pages)
+        self.row_splitter.split(pages)
+        self.debit_credit_processor.process(pages)
 
         return Document.from_pdf_bytes(
             pdf_bytes=pdf_bytes,
@@ -102,6 +108,7 @@ class DocumentBuildPipeline:
         ocr_results = self._run_ocr(image)
 
         self.cell_text_filler.fill_cells(tables, ocr_results)
+
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
 
         paragraphs = self.paragraph_detector.detect_paragraphs(
