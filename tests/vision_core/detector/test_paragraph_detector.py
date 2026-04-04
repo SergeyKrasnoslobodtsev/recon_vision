@@ -58,7 +58,7 @@ class TestParagraphDetector:
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
 
-        for test_file in pdf_files[:5]:
+        for test_file in pdf_files:
             logger.info(f"Тестирование на файле: {test_file.name}")
 
             pdf_bytes = test_file.read_bytes()
@@ -93,9 +93,7 @@ class TestParagraphDetector:
             merged_clusters = paragraph_detector._merge_nested_clusters(raw_clusters)
             observer.on_detected_boxes(
                 original,
-                boxes=[
-                    paragraph_detector._cluster_bbox(cluster).to_tuple() for cluster in merged_clusters
-                ],
+                boxes=[paragraph_detector._cluster_bbox(cluster).to_tuple() for cluster in merged_clusters],
                 stage="paragraph_hdbscan_clusters",
                 prefix=test_file.stem,
                 page_number=0,

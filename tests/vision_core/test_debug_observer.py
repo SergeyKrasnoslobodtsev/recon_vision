@@ -15,6 +15,7 @@ from vision_core.entities.paragraph import Paragraph, ParagraphType
 from vision_core.entities.table import Table
 from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.pipelines.build_document import DocumentBuildPipeline
+from vision_core.utils.image_processing import rotate_image
 
 
 class TestDebugImageObserver:
@@ -178,24 +179,30 @@ class TestDebugImageObserver:
         pdf_files = sorted(pdf_path.glob("*.pdf"))
         if not pdf_files:
             pytest.skip(f"PDF файлы не найдены в {pdf_path}")
-
-        test_file = pdf_files[0]
-        logger.info(f"Визуализация канонического документа: {test_file.name}")
-
         pipeline = DocumentBuildPipeline()
         observer = DebugImageObserver(output_dir=output_dir)
-        pdf_bytes = test_file.read_bytes()
-        document = pipeline.build(pdf_bytes)
+        # test_file = pdf_files[0]
+        for test_file in pdf_files:
+            logger.info(f"Визуализация канонического документа: {test_file.name}")
 
-        with PDFLoader(pdf_bytes) as loader:
-            for page in document.pages:
-                source_image = loader.get_page_image(page.page_number, dpi=pipeline.dpi)
-                observer.on_canonical_page(
-                    source_image,
-                    page=page,
-                    stage="canonical_document",
-                    prefix=test_file.stem,
-                )
+            pdf_bytes = test_file.read_bytes()
+            document = pipeline.build(pdf_bytes)
+            logger.info(f"DPI : {pipeline.dpi}")
+            with PDFLoader(pdf_bytes) as loader:
+                for page in document.pages:
+                    source_image = loader.get_page_image(page.page_number, dpi=pipeline.dpi)
+                    orientation_deg = page.metadata.get("orientation_deg", 0.0)
+                    deskew_angle_deg = page.metadata.get("deskew_angle_deg", 0.0)
+                    if orientation_deg:
+                        source_image = rotate_image(source_image, orientation_deg)
+                    if deskew_angle_deg:
+                        source_image = rotate_image(source_image, deskew_angle_deg)
+                    observer.on_canonical_page(
+                        source_image,
+                        page=page,
+                        stage="canonical_document",
+                        prefix=test_file.stem,
+                    )
 
-        first_page_path = output_dir / "canonical_document" / f"{test_file.stem}_000.png"
-        assert first_page_path.exists()
+            first_page_path = output_dir / "canonical_document" / f"{test_file.stem}_000.png"
+            assert first_page_path.exists()

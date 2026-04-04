@@ -108,7 +108,7 @@ def sample_reconciliation_data() -> ReconciliationData:
 @pytest.fixture
 def pdf_path() -> Path:
     """Путь к папке с тестовыми PDF"""
-    return Path("./examples/trash")
+    return Path("./examples/test")
 
 
 @pytest.fixture

@@ -142,7 +142,7 @@ class DebugImageObserver:
             prefix=prefix,
             page_number=resolved_page_number,
         )
-        drawer = Drawer(image)
+        drawer = Drawer(image, side_by_side=True)
 
         for paragraph in page.paragraphs:
             if paragraph.is_empty or not paragraph.blobs:
@@ -152,6 +152,7 @@ class DebugImageObserver:
                 color="darkorange",
                 width=0,
                 fill=(255, 165, 0, 96),
+                draw_on="left",
             )
 
         for table in page.tables:
@@ -163,7 +164,18 @@ class DebugImageObserver:
                     color="blue",
                     width=0,
                     fill=(30, 144, 255, 96),
+                    draw_on="left",
                 )
+
+        for table in page.tables:
+            drawer.draw_table_structure(
+                table.bbox.to_tuple(),
+                cells=table.cells,
+                label=table.id,
+                color="black",
+                cell_color="black",
+                draw_on="right",
+            )
 
         drawer.save(output_path)
         logger.debug(f"Canonical page saved: {stage} -> {output_path}")
