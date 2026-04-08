@@ -30,7 +30,7 @@ class PDFLoader:
             dpi: Разрешение (300 для OCR, 150 для быстрого просмотра)
 
         Returns:
-            numpy.ndarray: BGR изображение для OpenCV
+            numpy.ndarray: RGB изображение для OpenCV
         """
         page = self.doc[page_num]
 
@@ -38,11 +38,8 @@ class PDFLoader:
 
         # Конвертируем в numpy array (RGB)
         img = pix.pil_image()
-        img_np = np.array(img)
 
-        img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-
-        return img_bgr
+        return np.array(img)
 
     def get_page_size(self, page_num: int) -> tuple[float, float]:
         """
