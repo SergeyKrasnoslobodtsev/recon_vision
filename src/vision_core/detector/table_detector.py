@@ -3,6 +3,7 @@ import numpy as np
 from loguru import logger
 
 from vision_core.config import TableCellDetectorConfig, TableDetectorConfig, TablePreprocessorConfig
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.detector.table_cell_detector import TableCellDetector
 from vision_core.entities.bbox import BBox
 from vision_core.entities.table import Table
@@ -17,6 +18,7 @@ class TableDetector:
         preprocessor_config: TablePreprocessorConfig | None = None,
         table_detector_config: TableDetectorConfig | None = None,
         cell_detector_config: TableCellDetectorConfig | None = None,
+        debug_image: DebugImageObserver | None = None,
     ):
         """
         Args:
@@ -27,8 +29,9 @@ class TableDetector:
             cell_detector_config: Конфигурация для детектора ячеек. Если None, используется конфигурация по умолчанию.
         """
         self.cfg = table_detector_config or TableDetectorConfig()
-        self.preprocessor = TablePreprocessor(preprocessor_config)
+        self.preprocessor = TablePreprocessor(preprocessor_config, debug_image)
         self.table_cell_detector = TableCellDetector(cell_detector_config)
+        self._debug_image = debug_image
 
     def create_table_mask(self, image: np.ndarray) -> np.ndarray:
         """Создаёт маску таблиц для текущего изображения.
@@ -54,6 +57,14 @@ class TableDetector:
             gray_image = image
         # Создаем маску таблицы локально для текущего изображения.
         table_mask = self.create_table_mask(gray_image)
+
+        if self._debug_image:
+            self._debug_image.on_debug_image(
+                src_image=table_mask,
+                stage="3_table_mask",
+                prefix="page",
+                page_number=0,
+            )
 
         # Извлекаем bounding boxes таблиц
         table_bboxes = self.extract_raw_tables(table_mask)
@@ -132,6 +143,15 @@ class TableDetector:
         result = image.copy()
         current_table_mask = table_mask if table_mask is not None else self.create_table_mask(image)
         line_mask = self.get_table_line_mask(table, current_table_mask)
+
+        if self._debug_image:
+            self._debug_image.on_debug_image(
+                src_image=line_mask,
+                stage="2_table_line_mask",
+                prefix="page",
+                page_number=0,
+            )
+
         roi = table.bbox.roi(result)
 
         if roi.shape[:2] != line_mask.shape:
