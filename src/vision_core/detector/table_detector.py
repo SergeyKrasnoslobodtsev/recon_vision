@@ -42,8 +42,18 @@ class TableDetector:
         return self.preprocessor.create_table_mask(image)
 
     def detect_tables(self, image: np.ndarray) -> list[Table]:
+        """Детектирует таблицы на изображении и извлекает их ячейки.
+        Args:
+            image: Изображение страницы.
+        Returns:
+            list[Table]: Список найденных таблиц с их ячейками.
+        """
+        if len(image.shape) == 3 and image.shape[2] == 3:
+            gray_image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        else:
+            gray_image = image
         # Создаем маску таблицы локально для текущего изображения.
-        table_mask = self.create_table_mask(image)
+        table_mask = self.create_table_mask(gray_image)
 
         # Извлекаем bounding boxes таблиц
         table_bboxes = self.extract_raw_tables(table_mask)
