@@ -1,6 +1,6 @@
 from functools import cached_property
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .bbox import BBox
 from .cell import Cell
@@ -15,6 +15,7 @@ class Table(BaseModel):
     start_page: int = 0
     end_page: int = 0
     continuation_of: str | None = None
+    dc_cols: set[int] = Field(default_factory=set)
 
     @property
     def area(self) -> float:
@@ -49,6 +50,7 @@ class Table(BaseModel):
             start_page=self.start_page,
             end_page=self.end_page,
             continuation_of=self.continuation_of,
+            dc_cols=self.dc_cols.copy(),
         )
 
     def intersect(self, other: "Table") -> float:
@@ -116,6 +118,14 @@ class Table(BaseModel):
             return (heights[mid - 1] + heights[mid]) / 2
         else:
             return heights[mid]
+
+    def get_dc_header_row(self) -> int:
+        """Возвращает row-индекс строки с заголовками дебет/кредит, или -1."""
+        from vision_core.postprocessor.dc_cols_resolver import is_dc_header
+        for cell in self.cells:
+            if cell.col in self.dc_cols and cell.value and is_dc_header(cell.value):
+                return cell.row
+        return -1
 
     def is_valid(self) -> bool:
         """Проверяет, что таблица имеет больше одной ячейки и положительные размеры"""
