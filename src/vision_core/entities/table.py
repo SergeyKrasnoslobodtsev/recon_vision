@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from .bbox import BBox
 from .cell import Cell
+from vision_core.utils.markdown_utils import cell_text as _cell_text
 
 
 class Table(BaseModel):
@@ -141,6 +142,35 @@ class Table(BaseModel):
             if cell.col + cell.colspan > self.num_cols:
                 return False
         return True
+
+    def to_markdown(self) -> str:
+        if not self.cells or self.num_cols == 0:
+            return ""
+        grid = self._build_markdown_grid()
+        lines: list[str] = []
+        for row_idx, row in enumerate(grid):
+            lines.append("| " + " | ".join(row) + " |")
+            if row_idx == 0:
+                lines.append("| " + " | ".join("---" for _ in row) + " |")
+        continuation = f" (продолжение таблицы {self.continuation_of})" if self.continuation_of else ""
+        header = f"<!-- table_id={self.id} rows={self.num_rows} cols={self.num_cols}{continuation} -->"
+        return header + "\n" + "\n".join(lines)
+
+    def _build_markdown_grid(self) -> list[list[str]]:
+        grid: list[list[str]] = [[""] * self.num_cols for _ in range(self.num_rows)]
+        for cell in self.cells:
+            text = _cell_text(cell.value)
+            r_end = min(cell.row + cell.rowspan, self.num_rows)
+            c_end = min(cell.col + cell.colspan, self.num_cols)
+            for r in range(cell.row, r_end):
+                for c in range(cell.col, c_end):
+                    if r == cell.row and c == cell.col:
+                        grid[r][c] = text
+                    elif c > cell.col:
+                        grid[r][c] = "<"
+                    else:
+                        grid[r][c] = "^"
+        return grid
 
     def __str__(self) -> str:
         return f"Table(id={self.id}, rows={self.num_rows}, cols={self.num_cols},\

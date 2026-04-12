@@ -1,8 +1,7 @@
-"""Тесты для DocumentMarkdownExporter."""
+"""Тесты для Document.to_markdown()."""
 
 from pathlib import Path
 
-import pytest
 from loguru import logger
 
 from vision_core.entities.bbox import BBox
@@ -11,7 +10,6 @@ from vision_core.entities.document import Document
 from vision_core.entities.page import Page
 from vision_core.entities.paragraph import Paragraph, ParagraphType
 from vision_core.entities.table import Table
-from vision_core.exporters.markdown_exporter import DocumentMarkdownExporter
 
 
 def _make_cell(row: int, col: int, value: str, colspan: int = 1, rowspan: int = 1) -> Cell:
@@ -25,7 +23,7 @@ def _make_cell(row: int, col: int, value: str, colspan: int = 1, rowspan: int = 
     )
 
 
-def _make_paragraph(text: str, y: float, kind: ParagraphType = ParagraphType.TEXT) -> Paragraph:
+def _make_paragraph(text: str, y: float, kind: ParagraphType = ParagraphType.BODY_TEXT) -> Paragraph:
     return Paragraph(
         id="p1",
         text=text,
@@ -34,7 +32,7 @@ def _make_paragraph(text: str, y: float, kind: ParagraphType = ParagraphType.TEX
     )
 
 
-class TestDocumentMarkdownExporter:
+class TestDocumentToMarkdown:
     def test_simple_table(self):
         cells = [
             _make_cell(0, 0, "Описание"),
@@ -45,10 +43,9 @@ class TestDocumentMarkdownExporter:
             _make_cell(1, 2, ""),
         ]
         table = Table(id="t1", bbox=BBox(x_min=0, y_min=50, x_max=300, y_max=150), num_rows=2, num_cols=3, cells=cells)
-        page = Page(page_number=0, tables=[table])
-        doc = Document(pages=[page])
+        doc = Document(pages=[Page(page_number=0, tables=[table])])
 
-        md = DocumentMarkdownExporter().export(doc)
+        md = doc.to_markdown()
 
         assert "| Описание | Дебет | Кредит |" in md
         assert "| Сальдо | 51 043 |" in md
@@ -61,37 +58,36 @@ class TestDocumentMarkdownExporter:
             _make_cell(1, 1, "B"),
         ]
         table = Table(id="t1", bbox=BBox(x_min=0, y_min=0, x_max=200, y_max=60), num_rows=2, num_cols=2, cells=cells)
-        page = Page(page_number=0, tables=[table])
-        doc = Document(pages=[page])
+        doc = Document(pages=[Page(page_number=0, tables=[table])])
 
-        md = DocumentMarkdownExporter().export(doc)
+        md = doc.to_markdown()
 
-        # colspan=2: первая ячейка — значение, вторая — маркер "<"
         assert "| Заголовок | < |" in md
 
     def test_reading_order_by_y(self):
         paragraph = _make_paragraph("Введение", y=10)
         cells = [_make_cell(0, 0, "Данные"), _make_cell(0, 1, "Значение")]
         table = Table(id="t1", bbox=BBox(x_min=0, y_min=100, x_max=200, y_max=150), num_rows=1, num_cols=2, cells=cells)
-        page = Page(page_number=0, tables=[table], paragraphs=[paragraph])
-        doc = Document(pages=[page])
+        doc = Document(pages=[Page(page_number=0, tables=[table], paragraphs=[paragraph])])
 
-        md = DocumentMarkdownExporter().export(doc)
+        md = doc.to_markdown()
 
-        # Параграф (y=10) должен идти до таблицы (y=100)
         assert md.index("Введение") < md.index("Данные")
 
     def test_paragraph_types(self):
-        header = _make_paragraph("Акт сверки", y=0, kind=ParagraphType.HEADER)
-        footer = _make_paragraph("Подпись", y=900, kind=ParagraphType.FOOTER)
-        text = _make_paragraph("Описание", y=100, kind=ParagraphType.TEXT)
-        page = Page(page_number=0, paragraphs=[header, footer, text])
-        doc = Document(pages=[page])
+        header = _make_paragraph("Акт сверки", y=0, kind=ParagraphType.PAGE_HEADER)
+        footer = _make_paragraph("Подпись", y=900, kind=ParagraphType.PAGE_FOOTER)
+        title = _make_paragraph("Раздел 1", y=50, kind=ParagraphType.SECTION_TITLE)
+        caption = _make_paragraph("Таблица 1", y=80, kind=ParagraphType.TABLE_CAPTION)
+        text = _make_paragraph("Описание", y=100, kind=ParagraphType.BODY_TEXT)
+        doc = Document(pages=[Page(page_number=0, paragraphs=[header, footer, title, caption, text])])
 
-        md = DocumentMarkdownExporter().export(doc)
+        md = doc.to_markdown()
 
-        assert "### Акт сверки" in md
-        assert "*Подпись*" in md
+        assert "<small>Акт сверки</small>" in md
+        assert "<small>Подпись</small>" in md
+        assert "**Раздел 1**" in md
+        assert "*Таблица 1*" in md
         assert "Описание" in md
 
     def test_multipage_separator(self):
@@ -99,35 +95,23 @@ class TestDocumentMarkdownExporter:
         page2 = Page(page_number=1, paragraphs=[_make_paragraph("Страница 2", y=0)])
         doc = Document(pages=[page1, page2])
 
-        md = DocumentMarkdownExporter().export(doc)
+        md = doc.to_markdown()
 
         assert "---" in md
         assert "Страница 1" in md
         assert "Страница 2" in md
 
-    def test_integration_on_real_pdf(self, pdf_path: Path, output_dir: Path):
+    def test_integration_on_real_pdf(self, pdf_file: Path, output_dir: Path):
         """Экспортирует реальный PDF в Markdown и сохраняет результат."""
         from vision_core.pipelines.build_document import DocumentBuildPipeline
 
-        if not pdf_path.exists():
-            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+        logger.info(f"Экспорт: {pdf_file.name}")
+        document = DocumentBuildPipeline().build(pdf_file.read_bytes())
+        md = document.to_markdown()
 
-        pdf_files = list(pdf_path.glob("*.pdf"))
-        if not pdf_files:
-            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
+        out_path = output_dir / f"{pdf_file.stem}.md"
+        out_path.write_text(md, encoding="utf-8")
+        logger.success(f"Markdown сохранён: {out_path}")
 
-        pipeline = DocumentBuildPipeline()
-        exporter = DocumentMarkdownExporter()
-
-        for test_file in pdf_files:
-            logger.info(f"Экспорт: {test_file.name}")
-            pdf_bytes = test_file.read_bytes()
-            document = pipeline.build(pdf_bytes)
-            md = exporter.export(document)
-
-            out_path = output_dir / f"{test_file.stem}.md"
-            out_path.write_text(md, encoding="utf-8")
-            logger.success(f"Markdown сохранён: {out_path}")
-
-            assert len(md) > 0
-            assert "Страница" in md
+        assert len(md) > 0
+        assert "Страница" in md
