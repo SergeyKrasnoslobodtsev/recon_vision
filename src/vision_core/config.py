@@ -7,20 +7,14 @@ class ImagePreprocessorConfig:
     """Конфигурация для препроцессинга изображений перед распознаванием текста
 
     Attributes:
-        denoise_h: Параметр для удаления шума чем выше, тем сильнее удаление (0 - без удаления, 3-5 - легкое удаление)
-        clip_limit: Порог для контрастного ограничителя CLAHE (1.0 - без усиления, 2.0 - сильное усиление)
-        tile_size: Размер тайла для CLAHE (меньше - более локальный контраст)
-        kernel_size: Размер ядра для морфологических операций для усиления светлых штрихов (3-5 обычно достаточно)
-        blackhat_gain: Коэффициент усиления для операции blackhat (0.2-0.3 может помочь, но зависит от качества скана)
-        kernel_size_morph: Размер ядра для морфологических операций для оценки фона (обычно 21)
+        kernel: Размер ядра для размытия при unsharp masking
+        sigma: Стандартное отклонение для гауссова размытия при unsharp masking
+        amount: Коэффициент усиления для unsharp masking
     """
 
-    denoise_h: int = 3
-    clip_limit: float = 1.9
-    tile_size: int = 8
-    kernel_size: int = 5
-    blackhat_gain: float = 0.3
-    kernel_size_morph: int = 21
+    kernel: int = 5
+    sigma: float = 1.5
+    amount: float = 1.0
 
 
 @dataclass
@@ -64,18 +58,16 @@ class TablePreprocessorConfig:
     """Конфигурация препроцессора таблиц
 
     Attributes:
-        gaussian_blur_kernel: Размер ядра для гауссова размытия
-        horizontal_length_ratio: Минимальная длина горизонтальных линий относительно высоты изображения
-        vertical_length_ratio: Минимальная длина вертикальных линий относительно ширины изображения
+        scale: Делитель для размера ядра при детекции линий (чем больше, тем тоньше линии будут детектироваться)
+        min_h_clean_length: Минимальная площадь компоненты для горизонтальных линий после детекции (для удаления шумов)
+        min_v_clean_length: Минимальная площадь компоненты для вертикальных линий после детекции (для удаления шумов)
         min_table_width_ratio: Минимальная ширина таблицы относительно ширины изображения
         min_table_height_ratio: Минимальная высота таблицы относительно ширины таблицы
     """
 
-    gaussian_blur_kernel: int = 1
-
-    # Пороги для детекции линий
-    horizontal_length_ratio: float = 0.03
-    vertical_length_ratio: float = 0.006
+    scale: int = 100  # делитель размера ядра (width/scale для h, height/scale для v)
+    min_h_clean_length: int = 120  # мин. площадь компоненты для горизонтальных линий после детекции
+    min_v_clean_length: int = 20  # мин. площадь компоненты для вертикальных линий (меньше — ловим короткие)
 
     # Пороги для валидации таблиц
     min_table_width_ratio: float = 0.5  # минимум 50% ширины изображения
@@ -129,12 +121,38 @@ class PageOrientationPreprocessorConfig:
 
     model_name: str = "PP-LCNet_x1_0_doc_ori"
     model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-LCNet_x1_0_doc_ori")
-    min_orientation_score: float = 0.7
-    max_skew_deg: float = 10.0
-    coarse_step_deg: float = 0.5
-    fine_window_deg: float = 0.5
-    fine_step_deg: float = 0.1
-    min_abs_deskew_angle_deg: float = 0.05
+    min_orientation_score: float = 0.6
+    # edge rotation detection
+    edge_scan_range_deg: float = 45.0  # максимальный угол для сканирования краев
+    edge_scan_step_deg: float = 0.5  # шаг между углами для сканирования краев
+    edge_scan_deviation_deg: float = 0.5  # максимальное отклонение между углами с разных краев
+    edge_scan_size: int = -1  # -1 = весь край
+    edge_scan_depth: float = 0.5  # доля ширины/высоты для сканирования
+
+
+@dataclass
+class ParagraphPreprocessorConfig:
+    """Конфигурация препроцессора параграфов.
+
+    Attributes:
+        adaptive_block_size: Размер блока для адаптивной бинаризации (нечётное число).
+        adaptive_c: Константа вычитания для адаптивной бинаризации.
+        dilate_kw_ratio: Ширина ядра дилатации как доля median_row_height.
+        dilate_kh_ratio: Высота ядра дилатации как доля median_row_height.
+        dilate_kw_min: Минимальная ширина ядра дилатации в пикселях.
+        dilate_kh_min: Минимальная высота ядра дилатации в пикселях.
+        erode_kw: Ширина горизонтального ядра эрозии в пикселях.
+        page_bottom_cutoff: Доля высоты страницы, ниже которой регионы отсекаются.
+    """
+
+    adaptive_block_size: int = 21
+    adaptive_c: int = 20
+    dilate_kw_ratio: float = 0.4
+    dilate_kh_ratio: float = 0.8
+    dilate_kw_min: int = 10
+    dilate_kh_min: int = 7
+    erode_kw: int = 9
+    page_bottom_cutoff: float = 0.9
 
 
 @dataclass
@@ -142,10 +160,11 @@ class ParagraphDetectorConfig:
     """Конфигурация детектора параграфов.
 
     Attributes:
-        min_cluster_size: Минимальный размер кластера для объединения выделенных слов в параграф
+        reading_order_band_k: Коэффициент для ширины полосы при определении порядка чтения
+            (band_tolerance = median_row_height * reading_order_band_k).
     """
 
-    min_cluster_size: int = 2
+    reading_order_band_k: float = 3.0
 
 
 @dataclass
@@ -162,6 +181,7 @@ class VisionCoreConfig:
         default_factory=PageOrientationPreprocessorConfig
     )
 
+    paragraph_preprocessor: ParagraphPreprocessorConfig = field(default_factory=ParagraphPreprocessorConfig)
     paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
     dpi: int = 200
     ocr_confidence_threshold: float = 0.5
