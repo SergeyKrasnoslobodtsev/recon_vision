@@ -6,7 +6,6 @@ from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
-from vision_core.postprocessor.dc_cols import build_dc_cols_map
 
 
 class RowSplitter:
@@ -22,23 +21,27 @@ class RowSplitter:
         """Разбивает строки таблиц in-place (заменяет table объекты на новые).
 
         Args:
-            pages: Страницы документа после continuation_linker.link().
+            pages: Страницы документа после dc_cols_resolver.resolve().
         """
-        dc_cols_map = build_dc_cols_map(pages)
-
         for page in pages:
-            page.tables = [self._split_table(table, dc_cols_map.get(table.id, set())) for table in page.tables]
+            page.tables = [self._split_table(table, table.dc_cols) for table in page.tables]
 
     def _split_table(self, table: Table, dc_cols: set[int]) -> Table:
         """Разбивает строки одной таблицы, возвращает новый объект Table."""
         if not dc_cols:
             return table
 
+        header_row = table.get_dc_header_row()
         new_cells: list[Cell] = []
         row_offset = 0
 
         for row_idx in range(table.num_rows):
             row_cells = [c for c in table.cells if c.row == row_idx]
+
+            if row_idx <= header_row:
+                new_cells.extend(row_cells)
+                continue
+
             n = self._count_splits(row_cells, dc_cols)
 
             if n <= 1:
@@ -59,6 +62,7 @@ class RowSplitter:
             start_page=table.start_page,
             end_page=table.end_page,
             continuation_of=table.continuation_of,
+            dc_cols=table.dc_cols.copy(),
         )
 
     def _count_splits(self, row_cells: list[Cell], dc_cols: set[int]) -> int:

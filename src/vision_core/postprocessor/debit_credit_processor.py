@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from loguru import logger
 
-from vision_core.entities.cell import Cell
 from vision_core.entities.page import Page
-from vision_core.postprocessor.dc_cols import build_dc_cols_map, is_dc_header
+from vision_core.entities.table import Table
 from vision_core.utils.currency import parse_currency
 
 
@@ -23,31 +22,21 @@ class DebitCreditProcessor:
         Args:
             pages: Страницы документа после row_splitter.split().
         """
-        dc_cols_map = build_dc_cols_map(pages)
-        logger.debug(f"Колонки дебет/кредит для нормализации: {dc_cols_map}")
-
         for page in pages:
             for table in page.tables:
-                dc_cols = dc_cols_map.get(table.id, set())
-                if not dc_cols:
+                if not table.dc_cols:
                     continue
-                self._normalize(table.id, table.cells, dc_cols)
+                logger.debug(f"Колонки дебет/кредит таблицы {table.id}: {table.dc_cols}")
+                self._normalize(table)
 
-    def _find_dc_header_row(self, cells: list[Cell], dc_cols: set[int]) -> int:
-        """Возвращает row-индекс строки с заголовками дебет/кредит, или -1."""
-        for cell in cells:
-            if cell.col in dc_cols and cell.value and is_dc_header(cell.value):
-                return cell.row
-        return -1
-
-    def _normalize(self, table_id: str, cells: list[Cell], dc_cols: set[int]) -> None:
-        header_row = self._find_dc_header_row(cells, dc_cols)
-        for cell in cells:
-            if cell.col not in dc_cols:
+    def _normalize(self, table: Table) -> None:
+        header_row = table.get_dc_header_row()
+        for cell in table.cells:
+            if cell.col not in table.dc_cols:
                 continue
             if cell.row <= header_row:
                 continue
             try:
                 cell.value = f"{parse_currency(cell.value):.2f}"
             except ValueError:
-                logger.warning(f"Не удалось распарсить {cell.value} в таблице {table_id} row={cell.row} col={cell.col}")
+                logger.warning(f"Не удалось распарсить {cell.value} в таблице {table.id} row={cell.row} col={cell.col}")
