@@ -7,6 +7,7 @@ import numpy as np
 from loguru import logger
 
 from vision_core.config import VisionCoreConfig
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.detector.paragraph_detector import ParagraphDetector
 from vision_core.detector.table_detector import TableDetector
 from vision_core.entities.document import Document
@@ -22,6 +23,7 @@ from vision_core.postprocessor.table_continuation_linker import TableContinuatio
 from vision_core.postprocessor.table_id_assigner import TableIdAssigner
 from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.utils.drawer import Drawer
 
 
 class DocumentBuildPipeline:
@@ -36,18 +38,33 @@ class DocumentBuildPipeline:
         6. Детекция абзацев из текста вне таблиц.
     """
 
-    def __init__(self, config: VisionCoreConfig | None = None) -> None:
+    def __init__(
+        self,
+        config: VisionCoreConfig | None = None,
+        debug_image: DebugImageObserver | None = None,
+    ) -> None:
         cfg = config or VisionCoreConfig()
-        self.orientation_preprocessor = PageOrientationPreprocessor(cfg.page_orientation_preprocessor)
-        self.image_preprocessor = ImagePreprocessor(cfg.image_preprocessor)
+        self._debug_image = debug_image
+
+        self.image_preprocessor = ImagePreprocessor(cfg.image_preprocessor, debug_image=debug_image)
+        self.orientation_preprocessor = PageOrientationPreprocessor(
+            cfg.page_orientation_preprocessor, debug_image=debug_image
+        )
         self.table_detector = TableDetector(
             preprocessor_config=cfg.table_preprocessor,
             table_detector_config=cfg.table_detector,
             cell_detector_config=cfg.cell_detector,
+            debug_image=debug_image,
         )
         self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
-        self.paragraph_detector = ParagraphDetector(cfg.paragraph_detector)
-        self.cell_text_filler = CellTextFiller(cfg.ocr_confidence_threshold)
+        self.cell_text_filler = CellTextFiller(
+            cfg.ocr_confidence_threshold,
+            debug_image=debug_image,
+            ocr_engine=self.ocr_engine,
+        )
+        self.paragraph_detector = ParagraphDetector(
+            cfg.paragraph_detector, cfg.paragraph_preprocessor, debug_image=debug_image
+        )
         self.continuation_linker = TableContinuationLinker()
         self.dc_cols_resolver = DcColsResolver()
         self.row_splitter = RowSplitter()
@@ -65,13 +82,14 @@ class DocumentBuildPipeline:
             Каноническое представление документа.
         """
         pages: list[Page] = []
+        aligned_images: list[np.ndarray] = []
 
         with PDFLoader(pdf_bytes) as loader:
             for page_number in range(loader.num_pages):
                 logger.info(f"Обработка страницы {page_number} с dpi {self.dpi}...")
 
                 image = loader.get_page_image(page_number, dpi=self.dpi)
-                page = self._process_page(image, page_number)
+                page, aligned_image = self._process_page(image, page_number)
                 page.page_number = page_number
                 page.metadata.update(
                     {
@@ -81,6 +99,7 @@ class DocumentBuildPipeline:
                     }
                 )
                 pages.append(page)
+                aligned_images.append(aligned_image)
 
                 logger.debug(
                     f"Страница {page_number}: "
@@ -97,13 +116,24 @@ class DocumentBuildPipeline:
         self.row_splitter.split(pages)
         self.debit_credit_processor.process(pages)
 
+        if self._debug_image:
+            table_color_map = self._build_table_color_map(pages)
+            for page, aligned_image in zip(pages, aligned_images, strict=True):
+                self._debug_image.on_document_page(
+                    aligned_image,
+                    page=page,
+                    table_color_map=table_color_map,
+                    stage="8_document",
+                    page_number=page.page_number,
+                )
+
         return Document.from_pdf_bytes(
             pdf_bytes=pdf_bytes,
             pages=pages,
             metadata={"dpi": self.dpi, "num_pages": len(pages)},
         )
 
-    def _process_page(self, image: np.ndarray, page_number: int) -> Page:
+    def _process_page(self, image: np.ndarray, page_number: int) -> tuple[Page, np.ndarray]:
         """Обрабатывает одну страницу документа.
 
         Args:
@@ -111,16 +141,17 @@ class DocumentBuildPipeline:
             page_number: Номер страницы.
 
         Returns:
-            Страница с таблицами, абзацами и метаданными.
+            Кортеж (страница, выровненное изображение до препроцессора).
         """
+        logger.info("Предобработка изображения...")
+        image = self.image_preprocessor.process(image, page_number=page_number)
+        logger.info("Предобработка завершена.")
 
         logger.info("Коррекция ориентации и наклона...")
-        image, alignment_metadata = self.orientation_preprocessor.process(image)
+        image, alignment_metadata = self.orientation_preprocessor.process(image, page_number=page_number)
         logger.info("Коррекция завершена.")
 
-        logger.info("Предобработка изображения...")
-        image = self.image_preprocessor.process(image)
-        logger.info("Предобработка завершена.")
+        aligned_image = image.copy()
 
         logger.info("Детекция таблиц и ячеек...")
         tables = self.table_detector.detect_tables(image)
@@ -132,23 +163,20 @@ class DocumentBuildPipeline:
         logger.info("Распознавание текста OCR завершено.")
 
         logger.info("Заполнение ячеек текстом...")
-        self.cell_text_filler.fill_cells(tables, ocr_results)
+        self.cell_text_filler.fill_cells(tables, ocr_results, image=image, page_number=page_number)
         logger.info("Заполнение ячеек текстом завершено.")
 
         logger.info("Детекция абзацев...")
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
-
-        paragraphs = self.paragraph_detector.detect_paragraphs(
-            filtered_ocr,
-            image.shape[:2],
-        )
+        paragraphs = self.paragraph_detector.detect_paragraphs(image, filtered_ocr, tables, page_number=page_number)
         logger.info("Детекция абзацев завершена.")
 
-        return Page(
+        page = Page(
             tables=tables,
             paragraphs=paragraphs,
             metadata={"image_shape": list(image.shape[:2]), **alignment_metadata},
         )
+        return page, aligned_image
 
     def _run_ocr(self, image: np.ndarray) -> list[OcrResult]:
         """Запускает OCR на предобработанном изображении.
@@ -169,3 +197,37 @@ class DocumentBuildPipeline:
             f"средняя уверенность: {np.mean([r.confidence for r in results[0]]):.2f}"
         )
         return results[0]
+
+    @staticmethod
+    def _build_table_color_map(
+        pages: list[Page],
+    ) -> dict[str, tuple[int, int, int, int]]:
+        """Строит карту цветов для таблиц документа.
+
+        Таблицы одной цепочки продолжений получают одинаковый цвет.
+        Цвета берутся циклически из палитры Drawer.
+
+        Args:
+            pages: Все страницы документа после постпроцессоров.
+
+        Returns:
+            Словарь {table.id: RGBA-цвет}.
+        """
+        all_tables = {t.id: t for page in pages for t in page.tables}
+
+        def find_root(table_id: str) -> str:
+            t = all_tables.get(table_id)
+            if t and t.continuation_of and t.continuation_of in all_tables:
+                return find_root(t.continuation_of)
+            return table_id
+
+        roots: list[str] = []
+        for page in pages:
+            for table in page.tables:
+                root = find_root(table.id)
+                if root not in roots:
+                    roots.append(root)
+
+        palette = Drawer._CYCLIC_PALETTE
+        root_colors = {root: palette[i % len(palette)] for i, root in enumerate(roots)}
+        return {tid: root_colors[find_root(tid)] for tid in all_tables}

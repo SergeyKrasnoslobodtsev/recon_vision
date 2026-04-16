@@ -66,24 +66,26 @@ def _detect_dc_cols(table: Table) -> set[int]:
             elif any(kw in normalized for kw in _CREDIT_KEYWORDS):
                 credit_cols.add(cell.col)
 
-    if debit_cols and credit_cols:
-        return debit_cols | credit_cols
+    if not debit_cols and not credit_cols:
+        raise DcColsNotFoundError(table_id=table.id)
 
-    if debit_cols and not credit_cols:
-        debit_col = min(debit_cols)
-        credit_col = debit_col + 1
-        if credit_col >= table.num_cols:
-            raise DcColsInvalidPositionError(table_id=table.id, col=credit_col, num_cols=table.num_cols)
-        return debit_cols | {credit_col}
+    # Кредит найден — дебет должен быть слева от каждого кредита
+    for col in sorted(credit_cols):
+        partner = col - 1
+        if partner not in credit_cols and partner not in debit_cols:
+            if partner < 0:
+                raise DcColsInvalidPositionError(table_id=table.id, col=partner, num_cols=table.num_cols)
+            debit_cols.add(partner)
 
-    if credit_cols and not debit_cols:
-        credit_col = min(credit_cols)
-        debit_col = credit_col - 1
-        if debit_col < 0:
-            raise DcColsInvalidPositionError(table_id=table.id, col=debit_col, num_cols=table.num_cols)
-        return {debit_col} | credit_cols
+    # Дебет найден — кредит должен быть справа от каждого дебета
+    for col in sorted(debit_cols):
+        partner = col + 1
+        if partner not in debit_cols and partner not in credit_cols:
+            if partner >= table.num_cols:
+                raise DcColsInvalidPositionError(table_id=table.id, col=partner, num_cols=table.num_cols)
+            credit_cols.add(partner)
 
-    raise DcColsNotFoundError(table_id=table.id)
+    return debit_cols | credit_cols
 
 
 def _find_root(table: Table, all_tables: dict[str, Table]) -> Table:

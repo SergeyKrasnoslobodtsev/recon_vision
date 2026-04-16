@@ -1,7 +1,9 @@
-import pytest
-import cv2
 from pathlib import Path
+
+import cv2
+import pytest
 from loguru import logger
+
 from vision_core.loader.pdf_loader import PDFLoader
 
 
@@ -31,9 +33,7 @@ def test_real_reconciliation_act():
             logger.debug(f"Первые 200 символов:\n{text}")
 
         img = loader.get_page_image(page_num, dpi=300)
-        logger.info(
-            f"Изображение: {img.shape[1]}x{img.shape[0]} px, каналов: {img.shape[2]}"
-        )
+        logger.info(f"Изображение: {img.shape[1]}x{img.shape[0]} px, каналов: {img.shape[2]}")
 
         output_path = Path("./examples/output/rendered_page.png")
         cv2.imwrite(str(output_path), img)

@@ -1,8 +1,10 @@
 from hashlib import sha1
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
 
+from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.entities.bbox import BBox
 from vision_core.entities.document import Document
 from vision_core.entities.page import Page
@@ -116,3 +118,15 @@ class TestDocumentBuildPipeline:
         assert first_table.id == "0"
         assert second_table.id == "1"
         assert second_table.continuation_of == "0"
+
+    def test_integration(self, pdf_file: Path, output_dir: Path):
+        observer = DebugImageObserver(output_dir=output_dir)
+
+        pipeline = DocumentBuildPipeline(debug_image=observer)
+
+        document = pipeline.build(pdf_file.read_bytes())
+
+        text = document.to_markdown()
+
+        # save results for manual inspection
+        output_dir.joinpath("document.md").write_text(text)

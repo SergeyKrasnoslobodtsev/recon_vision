@@ -228,6 +228,51 @@ class Drawer:
 
         return self
 
+    _CYCLIC_PALETTE: tuple[tuple[int, int, int, int], ...] = (
+        (220, 50, 50, 90),    # red
+        (50, 180, 50, 90),    # green
+        (50, 100, 220, 90),   # blue
+        (220, 140, 0, 90),    # orange
+        (140, 50, 200, 90),   # violet
+        (0, 180, 180, 90),    # teal
+        (200, 50, 140, 90),   # pink
+        (120, 80, 30, 90),    # brown
+    )
+
+    def draw_boxes_cyclic(
+        self,
+        boxes: list[tuple[int, int, int, int]],
+        *,
+        palette: tuple[tuple[int, int, int, int], ...] | None = None,
+        width: int = 1,
+        draw_on: str | None = None,
+    ):
+        """Рисует набор рамок, циклически меняя цвет из палитры.
+
+        Удобно для отладки: каждый bbox получает свой цвет, что позволяет
+        визуально различать соседние блоки и оценивать качество детекции.
+
+        Args:
+            boxes: Список bbox в формате (x1, y1, x2, y2).
+            palette: RGBA-палитра цветов. По умолчанию используется встроенная.
+            width: Толщина рамки.
+            draw_on: Сторона холста: left, right или both.
+
+        Returns:
+            Drawer: Текущий экземпляр для цепочки вызовов.
+        """
+        colors = palette if palette is not None else self._CYCLIC_PALETTE
+        for i, bbox_xyxy in enumerate(boxes):
+            fill = colors[i % len(colors)]
+            self.draw_structure(
+                bbox_xyxy,
+                color=fill[:3],
+                width=width,
+                fill=fill,
+                draw_on=draw_on,
+            )
+        return self
+
     def draw_labeled_boxes(
         self,
         items: list[tuple[tuple[int, int, int, int], str]],
