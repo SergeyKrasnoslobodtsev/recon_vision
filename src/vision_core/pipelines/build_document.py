@@ -15,6 +15,7 @@ from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.ocr.base import OcrResult
 from vision_core.ocr.paddle_ocr import PaddleOcrEngine
 from vision_core.postprocessor.cell_text_filler import CellTextFiller
+from vision_core.postprocessor.dc_cols_resolver import DcColsResolver
 from vision_core.postprocessor.debit_credit_processor import DebitCreditProcessor
 from vision_core.postprocessor.row_splitter import RowSplitter
 from vision_core.postprocessor.table_continuation_linker import TableContinuationLinker
@@ -48,6 +49,7 @@ class DocumentBuildPipeline:
         self.paragraph_detector = ParagraphDetector(cfg.paragraph_detector)
         self.cell_text_filler = CellTextFiller(cfg.ocr_confidence_threshold)
         self.continuation_linker = TableContinuationLinker()
+        self.dc_cols_resolver = DcColsResolver()
         self.row_splitter = RowSplitter()
         self.debit_credit_processor = DebitCreditProcessor()
         self.table_id_assigner = TableIdAssigner()
@@ -91,6 +93,7 @@ class DocumentBuildPipeline:
 
         self.table_id_assigner.assign(pages)
         self.continuation_linker.link(pages)
+        self.dc_cols_resolver.resolve(pages)
         self.row_splitter.split(pages)
         self.debit_credit_processor.process(pages)
 
@@ -156,8 +159,8 @@ class DocumentBuildPipeline:
         Returns:
             Список OCR-результатов.
         """
-        bgr_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
-        results = self.ocr_engine.predict(bgr_image)
+        # bgr_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+        results = self.ocr_engine.predict(image)
         if not results or not results[0]:
             logger.warning("OCR не распознал текст на странице.")
             return []
