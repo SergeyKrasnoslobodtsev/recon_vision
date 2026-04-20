@@ -1,29 +1,29 @@
-"""Предоставляет временную реализацию извлечения данных акта сверки."""
+"""Реализует извлечение данных акта сверки из канонического документа."""
 
 from __future__ import annotations
 
-from app.application.dto.semantic_input import SemanticInput
 from app.domain.entities.reconciliation_data import ReconciliationData
-from app.domain.value_objects.period import Period
+from app.infrastructure.services.extractor.company_ext import extract_companies
+from app.infrastructure.services.extractor.dc_ext import extract_dc
+from app.infrastructure.services.extractor.period_ext import extract_period
+from vision_core.entities.document import Document
 
 
-class StubStructuredDataExtractor:
-    """Возвращает временный результат извлечения, пока semantic-слой не реализован."""
+class ReconciliationActExtractor:
+    """Оркестрирует извлечение данных акта сверки из Document."""
 
-    async def extract(self, semantic_input: SemanticInput) -> ReconciliationData:
-        """Извлекает временные данные из semantic input.
+    async def extract(self, document: Document) -> ReconciliationData:
+        companies = extract_companies(document)
+        period    = extract_period(document)
+        debit, credit = extract_dc(document, companies)
 
-        Args:
-            semantic_input: Нормализованный вход semantic analysis.
+        sellers = [c for c in companies if c.role == "seller"]
+        buyers  = [c for c in companies if c.role == "buyer"]
 
-        Returns:
-            ReconciliationData: Временный результат извлечения.
-        """
         return ReconciliationData(
-            seller="",
-            buyer="",
-            period=Period(),
-            debit=[],
-            credit=[],
-            message=semantic_input.document_metadata.get("message", "done"),
+            seller=sellers[0].display_name if sellers else "",
+            buyer=buyers[0].display_name if buyers else "",
+            period=period,
+            debit=debit,
+            credit=credit,
         )
