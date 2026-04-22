@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from vision_core.pipelines.build_document import DocumentBuildPipeline
 
 
@@ -25,7 +27,7 @@ class VisionDocumentBuilder:
             Document: Каноническое представление документа.
         """
         pipeline = self._get_pipeline()
-        return pipeline.build(pdf_bytes)
+        return await asyncio.to_thread(pipeline.build, pdf_bytes)
 
     def _get_pipeline(self) -> DocumentBuildPipeline:
         """Возвращает и при необходимости создаёт pipeline построения документа."""
