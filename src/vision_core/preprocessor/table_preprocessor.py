@@ -3,41 +3,47 @@ import numpy as np
 from loguru import logger
 
 from vision_core.config import TablePreprocessorConfig
+from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.utils.image_utils import compute_raw_line_mask
 
 
 class TablePreprocessor:
-    def __init__(self, cfg: TablePreprocessorConfig | None = None):
+    def __init__(
+        self,
+        cfg: TablePreprocessorConfig | None = None,
+        debug_image: DebugImageObserver | None = None,
+    ):
         """Предобработчик для таблиц
 
         Args:
             cfg: Конфигурация предобработчика таблиц
+            debug_image: Наблюдатель для отладки изображений. Если None, отладка отключена.
         """
         if cfg is None:
             cfg = TablePreprocessorConfig()
 
         self.cfg = cfg
+        self._debug_image = debug_image
 
     def create_table_mask(self, image: np.ndarray):
         """Создание маски таблицы из изображения"""
-        processed = self._processing(image)
-        # 0.005 соотношение в 2 раза меньше чем горизонтальная линия
-        # остается больше ложных линий, но потом мы их удалим с помощью clean_mask
-        min_lenght_h = int(processed.shape[0] * self.cfg.horizontal_length_ratio)
-        min_lenght_v = int(processed.shape[1] * self.cfg.vertical_length_ratio)
-        logger.debug(f"Min lengths - Horizontal: {min_lenght_h}, Vertical: {min_lenght_v}")
-        h_mask = self._detect_lines(processed, min_lenght_h, orientation="horizontal")
-        v_mask = self._detect_lines(processed, min_lenght_v, orientation="vertical")
-        table_mask = self._create_table_mask(h_mask, v_mask, min_lenght_h, min_lenght_v)
-        return table_mask
-
-    def _processing(self, image: np.ndarray):
-        blur = cv2.GaussianBlur(
-            image,
-            (self.cfg.gaussian_blur_kernel, self.cfg.gaussian_blur_kernel),
-            0,
+        h_mask, v_mask = compute_raw_line_mask(image, self.cfg.scale)
+        logger.debug(
+            f"min_h_clean={self.cfg.min_h_clean_length}, "
+            f"min_v_clean={self.cfg.min_v_clean_length}, scale={self.cfg.scale}"
         )
-        binary = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
-        return binary
+
+        if self._debug_image:
+            self._debug_image.on_debug_image(
+                src_image=h_mask + v_mask,
+                stage="3_table_mask",
+                prefix="raw_mask_lines",
+                page_number=0,
+            )
+
+        return self._create_table_mask(
+            h_mask, v_mask, self.cfg.min_h_clean_length, self.cfg.min_v_clean_length
+        )
 
     def _create_table_mask(
         self,
@@ -190,35 +196,3 @@ class TablePreprocessor:
 
         return valid_boxes
 
-    def _detect_lines(
-        self,
-        binary: np.ndarray,
-        kernel_size: int,
-        orientation: str = "horizontal",
-    ):
-        """Детекция линий
-
-        Args:
-            binary (np.ndarray): Бинарное изображение
-            kernel_size (int): Размер морфологического ядра
-            orientation (str, optional): Тип ориентации линии. Defaults to "horizontal".
-
-        Raises:
-            ValueError: Если ориентация не "horizontal" или "vertical"
-
-        Returns:
-            np.ndarray: Маска с обнаруженными линиями
-        """
-        if orientation == "horizontal":
-            morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kernel_size, 1))
-            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 1))
-        elif orientation == "vertical":
-            morph_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, kernel_size))
-            dilate_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 3))
-        else:
-            raise ValueError(f"Неверная ориентация: {orientation}. Ожидается 'horizontal' или 'vertical'")
-
-        lines = cv2.morphologyEx(binary, cv2.MORPH_OPEN, morph_kernel, iterations=2)
-        reconstructed = cv2.dilate(lines, dilate_kernel, iterations=2)
-
-        return reconstructed
