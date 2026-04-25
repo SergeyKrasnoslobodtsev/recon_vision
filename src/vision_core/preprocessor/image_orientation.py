@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import cv2
@@ -10,21 +11,13 @@ from loguru import logger
 from paddleocr import DocImgOrientationClassification
 
 from vision_core.config import PageOrientationPreprocessorConfig
-from vision_core.utils.image_processing import rotate_image, to_grayscale
+from vision_core.utils.image_processing import rotate_image
 
 
 class PageOrientationPreprocessor:
     """Классифицирует ориентацию страницы в градусах: 0, 90, 180, 270."""
 
     def __init__(self, config: PageOrientationPreprocessorConfig | None = None) -> None:
-        """Инициализирует классификатор ориентации страницы.
-
-        Args:
-            config: Конфигурация модели ориентации.
-
-        Raises:
-            FileNotFoundError: Если директория модели не найдена.
-        """
         self.cfg = config or PageOrientationPreprocessorConfig()
         if not Path(self.cfg.model_dir).exists():
             raise FileNotFoundError(f"Директория модели ориентации документа не найдена: {self.cfg.model_dir}")
@@ -34,14 +27,7 @@ class PageOrientationPreprocessor:
         )
 
     def process(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float]]:
-        """Выравнивает страницу по ориентации и наклону.
-
-        Args:
-            image: Исходное изображение страницы.
-
-        Returns:
-            tuple[np.ndarray, dict[str, float]]: Выравненное изображение и metadata шага.
-        """
+        """Выравнивает страницу по ориентации и наклону."""
         metadata: dict[str, float] = {
             "orientation_deg": 0.0,
             "orientation_score": 0.0,
@@ -56,24 +42,21 @@ class PageOrientationPreprocessor:
         metadata["orientation_score"] = orientation_score
 
         if orientation_score >= self.cfg.min_orientation_score:
-            aligned_image = self._rotate_by_orientation(image, orientation_deg)
+            aligned_image = _rotate_by_orientation(image, orientation_deg)
 
-        deskew_angle_deg = self.deskew(aligned_image)
-        aligned_image = rotate_image(aligned_image, deskew_angle_deg)
-        logger.debug(f"Угол наклона страницы: {deskew_angle_deg}°")
-        metadata["deskew_angle_deg"] = deskew_angle_deg
+        gray = cv2.cvtColor(aligned_image, cv2.COLOR_RGB2GRAY)
+        angle_rad = _detect_rotation(gray, self.cfg)
+        angle_deg = math.degrees(angle_rad)
+
+        aligned_image = rotate_image(aligned_image, angle_deg)
+
+        logger.debug(f"Угол наклона страницы: {angle_deg:.3f}°")
+        metadata["deskew_angle_deg"] = angle_deg
 
         return aligned_image, metadata
 
     def classify(self, image: np.ndarray) -> tuple[int, float]:
-        """Возвращает угол ориентации страницы и score модели.
-
-        Args:
-            image: Изображение страницы.
-
-        Returns:
-            tuple[int, float]: Угол ориентации в градусах и score уверенности.
-        """
+        """Возвращает угол ориентации страницы и score модели."""
         results = list(self.model.predict(image))
         if not results:
             return 0, 0.0
@@ -84,9 +67,7 @@ class PageOrientationPreprocessor:
         if not labels:
             return 0, 0.0
 
-        angle_deg = int(labels[0])
-        score = float(scores[0]) if scores else 0.0
-        return angle_deg, score
+        return int(labels[0]), float(scores[0]) if scores else 0.0
 
     def _extract_payload(self, result) -> dict:
         if isinstance(result, dict):
@@ -102,63 +83,172 @@ class PageOrientationPreprocessor:
 
         raise TypeError(f"Неподдерживаемый формат результата ориентации: {type(result)!r}")
 
-    def deskew(self, image: np.ndarray) -> float:
-        """Исправляет мелкий наклон изображения.
 
-        Args:
-            image: Исходное изображение страницы.
+# ---------------------------------------------------------------------------
+# Модульные функции определения угла наклона
+# ---------------------------------------------------------------------------
 
-        Returns:
-            float: Угол наклона изображения страницы.
-        """
-        gray = to_grayscale(image)
-        height, width = gray.shape
-        im_bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
 
-        coarse_best_angle = 0.0
-        coarse_best_score = -1.0
-        coarse_step_10x = max(1, int(round(self.cfg.coarse_step_deg * 10)))
-        max_skew_10x = int(round(self.cfg.max_skew_deg * 10))
+def _detect_rotation(
+    gray: np.ndarray,
+    cfg: PageOrientationPreprocessorConfig,
+    edges: tuple[bool, bool, bool, bool] = (True, True, True, True),
+) -> float:
+    """Определяет угол наклона по четырём краям изображения.
 
-        for angle_10x in range(-max_skew_10x, max_skew_10x + 1, coarse_step_10x):
-            angle = angle_10x / 10.0
-            score = self._projection_score(im_bw, angle, width, height)
-            if score > coarse_best_score:
-                coarse_best_score = score
-                coarse_best_angle = angle
+    Args:
+        gray: Изображение в оттенках серого.
+        cfg: Конфигурация препроцессора.
+        edges: Какие края использовать (левый, верхний, правый, нижний).
 
-        fine_best_angle = coarse_best_angle
-        fine_best_score = coarse_best_score
-        fine_window_10x = int(round(self.cfg.fine_window_deg * 10))
-        fine_step_10x = max(1, int(round(self.cfg.fine_step_deg * 10)))
-        fine_start = int(round((coarse_best_angle * 10) - fine_window_10x))
-        fine_end = int(round((coarse_best_angle * 10) + fine_window_10x))
+    Returns:
+        Угол наклона в радианах.
+    """
+    left, top, right, bottom = edges
+    rotations = []
 
-        for angle_10x in range(fine_start, fine_end + 1, fine_step_10x):
-            angle = angle_10x / 10.0
-            score = self._projection_score(im_bw, angle, width, height)
-            if score > fine_best_score:
-                fine_best_score = score
-                fine_best_angle = angle
+    if left:
+        rotations.append(_detect_edge_rotation(gray, cfg, (1, 0)))
+    if top:
+        rotations.append(-_detect_edge_rotation(gray, cfg, (0, 1)))
+    if right:
+        rotations.append(_detect_edge_rotation(gray, cfg, (-1, 0)))
+    if bottom:
+        rotations.append(-_detect_edge_rotation(gray, cfg, (0, -1)))
 
-        if abs(fine_best_angle) < self.cfg.min_abs_deskew_angle_deg:
-            return 0.0
+    if not rotations:
+        return 0.0
 
-        return fine_best_angle
+    rotations = np.array(rotations)
+    logger.debug(f"edge rotations: {[round(math.degrees(r), 3) for r in rotations]}°")
 
-    def _projection_score(
-        self,
-        im_bw: np.ndarray,
-        angle: float,
-        width: int,
-        height: int,
-    ) -> float:
-        matrix = cv2.getRotationMatrix2D((width / 2, height / 2), angle, 1.0)
-        rotated = cv2.warpAffine(im_bw, matrix, (width, height), flags=cv2.INTER_NEAREST)
-        projection = np.sum(rotated, axis=1, dtype=np.float64)
-        return float(np.var(projection))
+    # фильтруем выбросы: убираем значения дальше 2*MAD от медианы
+    median = np.median(rotations)
+    mad = np.median(np.abs(rotations - median))
+    scan_step_rad = math.radians(cfg.edge_scan_step_deg)
+    mask = np.abs(rotations - median) <= max(2 * mad, scan_step_rad)
+    filtered = rotations[mask] if mask.any() else rotations
 
-    def _rotate_by_orientation(self, image: np.ndarray, orientation_deg: int) -> np.ndarray:
-        if orientation_deg not in (0, 90, 180, 270):
-            raise ValueError(f"Недопустимый угол ориентации: {orientation_deg}. Ожидаются 0, 90, 180 или 270.")
-        return rotate_image(image, orientation_deg)
+    logger.debug(f"после фильтрации: {[round(math.degrees(r), 3) for r in filtered]}°")
+
+    # Если есть валидные ненулевые углы, нулевые оценки не участвуют в усреднении.
+    # Это уменьшает смещение к 0°, когда один из краёв возвращает 0 из-за слабого сигнала.
+    non_zero_mask = np.abs(filtered) > scan_step_rad
+    filtered_for_average = filtered[non_zero_mask] if non_zero_mask.any() else filtered
+    if filtered_for_average.size != filtered.size:
+        excluded_zero_deg = [round(math.degrees(r), 3) for r in filtered if abs(r) <= scan_step_rad]
+        logger.debug(f"исключены нулевые углы из усреднения: {excluded_zero_deg}°")
+
+    average = float(np.mean(filtered_for_average))
+    deviation = float(np.sqrt(np.sum((filtered_for_average - average) ** 2)))
+    scan_deviation_rad = math.radians(cfg.edge_scan_deviation_deg)
+
+    logger.debug(f"average: {math.degrees(average):.3f}°  deviation: {math.degrees(deviation):.3f}°")
+
+    if deviation <= scan_deviation_rad:
+        return average
+
+    logger.debug("deviation too large -- no rotation")
+    return 0.0
+
+
+def _detect_edge_rotation(
+    gray: np.ndarray,
+    cfg: PageOrientationPreprocessorConfig,
+    shift: tuple[int, int],
+) -> float:
+    """Определяет угол поворота по одному краю изображения."""
+    scan_range_rad = math.radians(cfg.edge_scan_range_deg)
+    scan_step_rad = math.radians(cfg.edge_scan_step_deg)
+
+    max_peak = 0
+    best_rotation = 0.0
+    rotation = 0.0
+
+    while rotation <= scan_range_rad:
+        for r in [rotation] if rotation == 0.0 else [rotation, -rotation]:
+            m = math.tan(r)
+            peak = _detect_edge_rotation_peak(gray, cfg, shift, m)
+            if peak > max_peak:
+                max_peak = peak
+                best_rotation = r
+        rotation += scan_step_rad
+
+    return best_rotation
+
+
+def _detect_edge_rotation_peak(
+    gray: np.ndarray,
+    cfg: PageOrientationPreprocessorConfig,
+    shift: tuple[int, int],
+    m: float,
+) -> int:
+    """Двигает наклонную виртуальную линию от края к центру.
+
+    Возвращает максимальный скачок черноты между шагами.
+
+    Args:
+        gray: Изображение в оттенках серого.
+        cfg: Конфигурация с параметрами сканирования.
+        shift: Направление движения линии (dx, dy).
+        m: Наклон линии (тангенс угла).
+    """
+    h, w = gray.shape
+    dx, dy = shift
+
+    if dy == 0:  # горизонтальное сканирование (левый/правый край)
+        scan_size = min(cfg.edge_scan_size if cfg.edge_scan_size != -1 else h, 10000, h)
+        max_depth = w // 2
+        half = scan_size // 2
+        outer_offset = int(abs(m) * half)
+        mid = h // 2
+        side_x = -outer_offset if dx > 0 else w + outer_offset
+        X = side_x + half * m
+        Y = mid - half
+        step_x, step_y = -m, 1.0
+
+    else:  # вертикальное сканирование (верхний/нижний край)
+        scan_size = min(cfg.edge_scan_size if cfg.edge_scan_size != -1 else w, 10000, w)
+        max_depth = h // 2
+        half = scan_size // 2
+        outer_offset = int(abs(m) * half)
+        mid = w // 2
+        side_y = -outer_offset if dy > 0 else h + outer_offset
+        X = mid - half
+        Y = side_y - half * m
+        step_x, step_y = 1.0, -m
+
+    steps = np.arange(scan_size)
+    px = np.round(X + steps * step_x).astype(np.int32)
+    py = np.round(Y + steps * step_y).astype(np.int32)
+
+    max_blackness_abs = 255 * scan_size * cfg.edge_scan_depth
+    last_blackness = 0
+    max_diff = 0
+    accumulated = 0
+
+    for dep in range(int(max_depth)):
+        cur_px = px + dx * dep
+        cur_py = py + dy * dep
+
+        valid = (cur_px >= 0) & (cur_px < w) & (cur_py >= 0) & (cur_py < h)
+        blackness = int((255 - gray[cur_py[valid], cur_px[valid]]).sum()) if valid.any() else 0
+
+        diff = blackness - last_blackness
+        last_blackness = blackness
+        if diff > max_diff:
+            max_diff = diff
+
+        accumulated += blackness
+        if accumulated >= max_blackness_abs:
+            break
+    else:
+        return 0  # дошли до середины — ненадёжно
+
+    return max_diff
+
+
+def _rotate_by_orientation(image: np.ndarray, orientation_deg: int) -> np.ndarray:
+    if orientation_deg not in (0, 90, 180, 270):
+        raise ValueError(f"Недопустимый угол ориентации: {orientation_deg}. Ожидаются 0, 90, 180 или 270.")
+    return rotate_image(image, orientation_deg)
