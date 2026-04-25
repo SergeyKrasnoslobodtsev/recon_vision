@@ -10,15 +10,16 @@ import numpy as np
 from loguru import logger
 from paddleocr import DocImgOrientationClassification
 
-from vision_core.config import PageOrientationPreprocessorConfig
-from vision_core.utils.image_processing import rotate_image
+from vision_core.config import PageOrientationPreprocessorConfig, TablePreprocessorConfig
+from vision_core.utils.image_utils import compute_raw_line_mask, rotate_image
 
 
 class PageOrientationPreprocessor:
     """Классифицирует ориентацию страницы в градусах: 0, 90, 180, 270."""
 
-    def __init__(self, config: PageOrientationPreprocessorConfig | None = None) -> None:
+    def __init__(self, config: PageOrientationPreprocessorConfig | None = None, debug_image=None) -> None:
         self.cfg = config or PageOrientationPreprocessorConfig()
+        self._debug = debug_image
         if not Path(self.cfg.model_dir).exists():
             raise FileNotFoundError(f"Директория модели ориентации документа не найдена: {self.cfg.model_dir}")
         self.model = DocImgOrientationClassification(
@@ -26,7 +27,7 @@ class PageOrientationPreprocessor:
             model_dir=self.cfg.model_dir,
         )
 
-    def process(self, image: np.ndarray) -> tuple[np.ndarray, dict[str, float]]:
+    def process(self, image: np.ndarray, *, page_number: int = 0) -> tuple[np.ndarray, dict[str, float]]:
         """Выравнивает страницу по ориентации и наклону."""
         metadata: dict[str, float] = {
             "orientation_deg": 0.0,
@@ -45,13 +46,22 @@ class PageOrientationPreprocessor:
             aligned_image = _rotate_by_orientation(image, orientation_deg)
 
         gray = cv2.cvtColor(aligned_image, cv2.COLOR_RGB2GRAY)
-        angle_rad = _detect_rotation(gray, self.cfg)
-        angle_deg = math.degrees(angle_rad)
 
-        aligned_image = rotate_image(aligned_image, angle_deg)
+        corrected = _correct_perspective_from_table(gray, aligned_image)
+        if corrected is not None:
+            aligned_image = corrected
+            logger.debug("Коррекция перспективы по таблице применена")
+        else:
+            angle_rad = _detect_rotation(gray, self.cfg)
+            angle_deg = math.degrees(angle_rad)
+            aligned_image = rotate_image(aligned_image, angle_deg)
+            logger.debug(f"Угол наклона (edge fallback): {angle_deg:.3f}°")
+            metadata["deskew_angle_deg"] = angle_deg
 
-        logger.debug(f"Угол наклона страницы: {angle_deg:.3f}°")
-        metadata["deskew_angle_deg"] = angle_deg
+        if self._debug:
+            self._debug.on_debug_image(
+                src_image=aligned_image, stage="3_aligned", prefix="page", page_number=page_number
+            )
 
         return aligned_image, metadata
 
@@ -87,6 +97,80 @@ class PageOrientationPreprocessor:
 # ---------------------------------------------------------------------------
 # Модульные функции определения угла наклона
 # ---------------------------------------------------------------------------
+
+
+def _order_corner_points(points: np.ndarray) -> np.ndarray | None:
+    """Возвращает 4 угловые точки в порядке TL, TR, BR, BL.
+
+    Использует суммы и разности координат для определения углов.
+    """
+    if len(points) < 4:
+        return None
+    sums = points[:, 0] + points[:, 1]
+    diffs = points[:, 0] - points[:, 1]
+    tl = points[np.argmin(sums)]
+    br = points[np.argmax(sums)]
+    tr = points[np.argmax(diffs)]
+    bl = points[np.argmin(diffs)]
+    return np.float32([tl, tr, br, bl])
+
+
+def _correct_perspective_from_table(gray: np.ndarray, image: np.ndarray) -> np.ndarray | None:
+    """Корректирует перспективу страницы по 4 угловым точкам таблицы.
+
+    Находит пересечения h/v линий таблицы, выбирает 4 крайние точки (TL, TR, BR, BL)
+    и применяет getPerspectiveTransform. Если таблица не найдена — возвращает None.
+    """
+    table_cfg = TablePreprocessorConfig()
+    h_mask, v_mask = compute_raw_line_mask(gray, table_cfg.scale)
+    raw_mask = cv2.bitwise_or(h_mask, v_mask)
+    _, w = gray.shape
+
+    contours, _ = cv2.findContours(raw_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    best_cnt, best_area = None, 0
+    for cnt in contours:
+        bx, by, bw, bh = cv2.boundingRect(cnt)
+        if bw < table_cfg.min_table_width_ratio * w:
+            continue
+        if bh < table_cfg.min_table_height_ratio * bw:
+            continue
+        area = bw * bh
+        if area > best_area:
+            best_area, best_cnt = area, cnt
+
+    if best_cnt is None:
+        logger.debug("Таблица не найдена — пропуск коррекции перспективы")
+        return None
+
+    bx, by, bw, bh = cv2.boundingRect(best_cnt)
+
+    intersections = cv2.bitwise_and(h_mask, v_mask)
+    roi = intersections[by : by + bh, bx : bx + bw]
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+    dilated = cv2.dilate(roi, kernel)
+
+    n_labels, _, _, centroids = cv2.connectedComponentsWithStats(dilated)
+    if n_labels < 5:  # фон + минимум 4 угла
+        logger.debug("Недостаточно точек пересечения для коррекции перспективы")
+        return None
+
+    points = centroids[1:] + np.array([[bx, by]])
+    pts1 = _order_corner_points(points)
+    if pts1 is None:
+        return None
+
+    pts2 = np.float32(
+        [
+            [bx, by],
+            [bx + bw, by],
+            [bx + bw, by + bh],
+            [bx, by + bh],
+        ]
+    )
+
+    logger.debug(f"Перспектива: {pts1.tolist()} -> [{bx},{by}] {bw}x{bh}")
+    M = cv2.getPerspectiveTransform(pts1, pts2)
+    return cv2.warpPerspective(image, M, (image.shape[1], image.shape[0]), borderMode=cv2.BORDER_REPLICATE)
 
 
 def _detect_rotation(
@@ -135,12 +219,16 @@ def _detect_rotation(
     # Это уменьшает смещение к 0°, когда один из краёв возвращает 0 из-за слабого сигнала.
     non_zero_mask = np.abs(filtered) > scan_step_rad
     filtered_for_average = filtered[non_zero_mask] if non_zero_mask.any() else filtered
-    if filtered_for_average.size != filtered.size:
-        excluded_zero_deg = [round(math.degrees(r), 3) for r in filtered if abs(r) <= scan_step_rad]
-        logger.debug(f"исключены нулевые углы из усреднения: {excluded_zero_deg}°")
+    filtered_not_zero = filtered_for_average[np.abs(filtered_for_average) != 0]
+    logger.debug(f"для усреднения используются: {[round(math.degrees(r), 3) for r in filtered_for_average]}°")
+    # if filtered_for_average.size != filtered.size:
+    #     filtered_for_average = [round(math.degrees(r), 3) for r in filtered if abs(r) <= scan_step_rad]
+    #     logger.debug(f"исключены нулевые углы из усреднения: {filtered_for_average}°")
 
-    average = float(np.mean(filtered_for_average))
-    deviation = float(np.sqrt(np.sum((filtered_for_average - average) ** 2)))
+    average = float(np.mean(filtered_not_zero))
+    deviation = float(
+        np.sqrt(np.sum((filtered - average) ** 2))
+    )  # считаем по всем filtered (включая нули) — нули голосуют за "край прямой"
     scan_deviation_rad = math.radians(cfg.edge_scan_deviation_deg)
 
     logger.debug(f"average: {math.degrees(average):.3f}°  deviation: {math.degrees(deviation):.3f}°")
