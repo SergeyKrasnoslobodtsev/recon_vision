@@ -4,6 +4,8 @@ examples/
 models/
 .github/
 .claude/
+.continue/
+pullenti/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
