@@ -99,6 +99,16 @@ def get_median_line_height(contours) -> float:
     return median_height
 
 
+def filtered_contours(contours: list[np.ndarray], height: float) -> list[np.ndarray]:
+    """Фильтрует контуры, оставляя только те, которые имеют высоту, близкую к медианной высоте линий."""
+    filtered_contours = []
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        if abs(h - height) < height * 0.5:
+            filtered_contours.append(cnt)
+    return filtered_contours
+
+
 def fit_line(cnt) -> tuple[float, float, float, float]:
     """Применяет функцию cv2.fitLine для получения параметров линии, аппроксимирующей контур.
 
