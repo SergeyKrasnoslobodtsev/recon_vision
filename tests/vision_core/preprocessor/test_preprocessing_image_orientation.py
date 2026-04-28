@@ -37,15 +37,12 @@ class TestPreprocessingPageOrientation:
         rotated = rotate_image(original, input_rotation_deg)
         aligned, metadata = orientation_preprocessor.process(rotated)
 
-        predicted_orientation_deg = int(metadata["orientation_deg"])
-        coarse_correction_deg = _normalize_signed_angle(predicted_orientation_deg)
-        total_correction_deg = coarse_correction_deg + float(metadata["deskew_angle_deg"])
-        correction_error_deg = abs(_normalize_signed_angle(input_rotation_deg + total_correction_deg))
+        orientation_deg = metadata["orientation_deg"]
 
-        logger.info(f"{pdf_file.name} угол вход={input_rotation_deg} коррекция={total_correction_deg:.2f}")
-
+        logger.info(f"{pdf_file.name} угол вход={input_rotation_deg} коррекция={orientation_deg:.2f}")
+        correction_error_deg = abs(orientation_deg - input_rotation_deg)
         observer.on_debug_image(
-            rotated, aligned,
+            aligned,
             stage="page_alignment",
             prefix=f"{input_rotation_deg}_{pdf_file.stem}",
             page_number=0,
