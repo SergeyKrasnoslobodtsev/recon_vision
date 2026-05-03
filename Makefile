@@ -74,6 +74,9 @@ install-gpu: install-base
 run: venv
 	PYTHONPATH=src/ $(VENV_PYTHON) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
+client_run: venv
+	PYTHONPATH=src/ $(VENV_PYTHON) -m src.client.client_gui
+
 deploy: generate_dot_env
 	docker-compose build
 	docker-compose up -d
