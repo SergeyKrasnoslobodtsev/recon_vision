@@ -1,10 +1,15 @@
-import cv2
+"""
+Модуль для предобработки изображений таблиц. Содержит класс TablePreprocessor,
+который выполняет гамма-коррекцию и бинаризацию изображения для выделения таблиц.
+"""
+
+from __future__ import annotations
+
 import numpy as np
-from loguru import logger
 
 from vision_core.config import TablePreprocessorConfig
 from vision_core.debug_image_observer import DebugImageObserver
-from vision_core.utils.image_utils import compute_raw_line_mask
+from vision_core.utils.image_utils import binary_threshold, gamma_correction
 
 
 class TablePreprocessor:
@@ -25,174 +30,17 @@ class TablePreprocessor:
         self.cfg = cfg
         self._debug_image = debug_image
 
-    def create_table_mask(self, image: np.ndarray):
+    def process(self, image: np.ndarray) -> np.ndarray:
         """Создание маски таблицы из изображения"""
-        h_mask, v_mask = compute_raw_line_mask(image, self.cfg.scale)
-        logger.debug(
-            f"min_h_clean={self.cfg.min_h_clean_length}, "
-            f"min_v_clean={self.cfg.min_v_clean_length}, scale={self.cfg.scale}"
-        )
+        gamma_img = gamma_correction(image, self.cfg.gamma)
+        binary_image = binary_threshold(gamma_img, block_size=self.cfg.block_size, C=self.cfg.C)
 
         if self._debug_image:
             self._debug_image.on_debug_image(
-                src_image=h_mask + v_mask,
-                stage="3_table_mask",
-                prefix="raw_mask_lines",
+                src_image=binary_image,
+                stage="3_table_preprocessor",
+                prefix="binary",
                 page_number=0,
             )
 
-        return self._create_table_mask(
-            h_mask, v_mask, self.cfg.min_h_clean_length, self.cfg.min_v_clean_length
-        )
-
-    def _create_table_mask(
-        self,
-        h_mask: np.ndarray,
-        v_mask: np.ndarray,
-        min_length_h: int,
-        min_length_v: int,
-    ):
-        """
-        Создает маску таблицы путем комбинирования масок горизонтальных и вертикальных линий.
-
-        Note:
-
-            Метод обрабатывает области, похожие на таблицы, выполняя следующие шаги:
-            1. Находит пересечения между горизонтальными и вертикальными масками
-            2. Определяет области, похожие на таблицы, используя ограничивающие прямоугольники
-            3. Очищает каждую область индивидуально для удаления шума
-            4. Объединяет очищенные горизонтальные и вертикальные маски
-            Такой подход улучшает производительность за счет обработки только релевантных областей
-            и закрашивания остальной части изображения черным цветом, что ускоряет операцию _clean_mask.
-
-        Args:
-            h_mask (np.ndarray): Бинарная маска, содержащая обнаруженные горизонтальные линии
-            v_mask (np.ndarray): Бинарная маска, содержащая обнаруженные вертикальные линии
-            min_length_h (int): Минимальная длина горизонтальных линий для фильтрации
-            min_length_v (int): Минимальная длина вертикальных линий для фильтрации
-
-        Returns:
-            np.ndarray: Очищенная бинарная маска, содержащая обнаруженную структуру таблицы,
-                        где линии таблицы белые, а фон черный
-        """
-
-        intersec = cv2.bitwise_and(h_mask, v_mask)
-        mask = cv2.bitwise_or(h_mask, v_mask)
-        regions = self._raw_bounding_boxes(mask)
-
-        cleaned_h_mask = np.zeros_like(h_mask, dtype=np.uint8)
-        cleaned_v_mask = np.zeros_like(v_mask, dtype=np.uint8)
-
-        for x, y, w, h in regions:
-            h_roi = h_mask[y : y + h, x : x + w]
-            v_roi = v_mask[y : y + h, x : x + w]
-            intersec_roi = intersec[y : y + h, x : x + w]
-
-            # установим 1 пересечени, так как есть таблицы
-            # где линии с одним пересечением
-            # для вертикальных линий так нельзя делать
-            # так как буквы будут давать ложные линии и в дальнейшем
-            # делить ячейку по ложной линии
-            cleaned_h = self._clean_mask(
-                h_roi,
-                intersec_roi,
-                min_length=min_length_h,
-                min_intersections=1,
-                type="horizontal",
-            )
-
-            cleaned_v = self._clean_mask(
-                v_roi,
-                intersec_roi,
-                min_length=min_length_v,
-                min_intersections=2,
-                type="vertical",
-            )
-
-            cleaned_h_mask[y : y + h, x : x + w] = cleaned_h
-            cleaned_v_mask[y : y + h, x : x + w] = cleaned_v
-
-        cleaned_mask = cv2.add(cleaned_h_mask, cleaned_v_mask)
-        return cleaned_mask
-
-    def _clean_mask(
-        self,
-        mask: np.ndarray,
-        intersec: np.ndarray,
-        min_length: int = 120,
-        min_intersections: int = 2,
-        type: str = "horizontal",
-    ):
-        """
-        Метод фильтрации линий на маске.
-
-        Args:
-            mask (np.ndarray): Бинарная маска линий (горизонтальных или вертикальных).
-            intersec (np.ndarray): Маска точек пересечения горизонтальных и вертикальных линий.
-            min_length (int, optional): Минимальный размер связной компоненты (площадь/«длина» линии)
-            для сохранения. Defaults to 120.
-            min_intersections (int, optional): Минимальное количество пересечений на концах линии
-            для её сохранения. Defaults to 2.
-            type (str, optional): Ориентация линии: "horizontal" или "vertical". Defaults to "horizontal".
-
-        Returns:
-            np.ndarray: Очищенная бинарная маска линий после фильтрации по длине и количеству пересечений.
-        """
-        num_mask_labels, labels_mask, stats_mask, _ = cv2.connectedComponentsWithStats(
-            mask.astype(np.uint8), connectivity=8
-        )
-
-        output_mask = np.zeros_like(mask, dtype=np.uint8)
-
-        for lbl in range(1, num_mask_labels):
-            component_area = stats_mask[lbl, cv2.CC_STAT_AREA]
-
-            # Пропускаем слишком маленькие по площади компоненты (слишком короткие линии)
-            if component_area < min_length:
-                continue
-
-            comp_boolean_mask = labels_mask == lbl
-            x, y, w, h = cv2.boundingRect(comp_boolean_mask.astype(np.uint8))
-
-            # if np.sum(intersec[y : y + h, x : x + w]) == 0:
-            #     continue
-
-            # Если пересечения с двух концов линии есть, сохраняем компонент
-            if type == "horizontal":
-                left = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[1]) < x + w // 3)[None, :]])
-                right = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[1]) > x + 2 * w // 3)[None, :]])
-                crosses = int(left) + int(right)
-            else:  # vertical
-                top = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[0]) < y + h // 3)[:, None]])
-                bottom = np.any(intersec[comp_boolean_mask & (np.arange(mask.shape[0]) > y + 2 * h // 3)[:, None]])
-                crosses = int(top) + int(bottom)
-
-            if crosses >= min_intersections:
-                output_mask[comp_boolean_mask] = 255
-
-        return output_mask
-
-    def _raw_bounding_boxes(self, mask: np.ndarray):
-        h, w = mask.shape
-        contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
-        valid_boxes: list[tuple[int, int, int, int]] = []
-
-        for cnt in contours:
-            x, y, box_w, box_h = cv2.boundingRect(cnt)
-
-            # идея:
-            # в документах все таблицы расположены по всей ширине
-            # мы можем определить что таблица не может быть меньше половины ширины изображения
-            # также мы понимаем, что высота таблицы не может быть меньше 5% от ее ширины
-            # w = 100 h = 10
-
-            if box_w < self.cfg.min_table_width_ratio * w:
-                continue
-
-            if box_h < self.cfg.min_table_height_ratio * box_w:
-                continue
-
-            valid_boxes.append((x, y, box_w, box_h))
-
-        return valid_boxes
-
+        return binary_image
