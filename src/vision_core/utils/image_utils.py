@@ -100,7 +100,8 @@ def get_mask(mask1: np.ndarray, mask2: np.ndarray) -> np.ndarray:
         mask1: Первая бинарная маска.
         mask2: Вторая бинарная маска.
     Returns:
-        np.ndarray: Объединённая бинарная маска, где белые пиксели соответствуют элементам, присутствующим в обеих масках.
+        np.ndarray: Объединённая бинарная маска, где белые пиксели соответствуют элементам,
+            присутствующим в обеих масках.
     """
     return cv2.bitwise_or(mask1, mask2)
 
@@ -114,46 +115,6 @@ def find_contours(binary_image: np.ndarray) -> list[np.ndarray]:
         list[np.ndarray]: Список найденных контуров, представленных в виде массивов точек.
     """
     return cv2.findContours(binary_image, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)[0]
-
-
-def get_median_line_height(contours) -> float:
-    """Вычисляет медианную высоту линий по контурам.
-
-    Args:
-        contours: Список контуров, найденных на изображении.
-    Returns:
-        float: Медианная высота линий, вычисленная на основе высот ограничивающих прямоугольников контуров.
-    """
-
-    heights = [cv2.boundingRect(cnt)[3] for cnt in contours]
-
-    median_height = int(np.median(heights))
-
-    return median_height
-
-
-def filtered_contours(contours: list[np.ndarray], height: float) -> list[np.ndarray]:
-    """Фильтрует контуры, оставляя только те, которые имеют высоту, близкую к медианной высоте линий."""
-    filtered_contours = []
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if abs(h - height) < height * 0.5:
-            filtered_contours.append(cnt)
-    return filtered_contours
-
-
-def fit_line(cnt) -> tuple[float, float, float, float]:
-    """Применяет функцию cv2.fitLine для получения параметров линии, аппроксимирующей контур.
-
-    Args:
-        cnt: Контур, представленный в виде массива точек.
-    Returns:
-        tuple: Параметры линии (vx, vy, x0, y0), где (vx, vy) - вектор направления линии,
-               (x0, y0) - точка на линии.
-    """
-    [vx, vy, x0, y0] = cv2.fitLine(cnt, cv2.DIST_L2, 0, 0.01, 0.01)
-
-    return vx.item(), vy.item(), x0.item(), y0.item()
 
 
 def rotate_image(image: np.ndarray, angle_deg: float) -> np.ndarray:
