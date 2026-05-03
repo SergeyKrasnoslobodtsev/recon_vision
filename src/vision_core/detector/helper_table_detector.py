@@ -269,12 +269,11 @@ def extract_raw_tables(
     candidates: list[tuple[int, int, int, int]] = []
     H, W = table_mask.shape[:2]
     min_width = int(W * scale_width)
-    min_height = int(H * scale_height)
 
     for contour in contours:
         x, y, w, h = geometry_utils.bounding_rect(contour)
 
-        if w < min_width or h < min_height:
+        if w < min_width or h < 20:
             continue
 
         if w > W * 0.95 and h > H * 0.95:
