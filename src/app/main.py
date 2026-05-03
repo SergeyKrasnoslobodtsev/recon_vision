@@ -44,10 +44,10 @@ def get_application() -> FastAPI:
     except Exception:
         pass
 
-    application.include_router(api_router, prefix=settings.api_prefix)
+    application.include_router(api_router)
     application.include_router(
         create_docs_router(application),
-        prefix=f"{settings.api_prefix}/v1",
+        # prefix=f"{settings.api_prefix}/v1",
     )
 
     return application
