@@ -53,7 +53,6 @@ class DocumentBuildPipeline:
         self.table_detector = TableDetector(
             preprocessor_config=cfg.table_preprocessor,
             table_detector_config=cfg.table_detector,
-            cell_detector_config=cfg.cell_detector,
             debug_image=debug_image,
         )
         self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
@@ -148,33 +147,33 @@ class DocumentBuildPipeline:
         logger.info("Предобработка завершена.")
 
         logger.info("Коррекция ориентации и наклона...")
-        image, alignment_metadata = self.orientation_preprocessor.process(image, page_number=page_number)
+        aligned_image, alignment_metadata = self.orientation_preprocessor.process(image, page_number=page_number)
         logger.info("Коррекция завершена.")
 
-        aligned_image = image.copy()
+        base_img = aligned_image.copy()
 
         logger.info("Детекция таблиц и ячеек...")
-        tables = self.table_detector.detect_tables(image)
+        tables = self.table_detector.detect_tables(base_img)
         logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
         logger.info("Детекция таблиц и ячеек завершена.")
 
         logger.info("Распознавание текста OCR...")
-        ocr_results = self._run_ocr(image)
+        ocr_results = self._run_ocr(base_img)
         logger.info("Распознавание текста OCR завершено.")
 
         logger.info("Заполнение ячеек текстом...")
-        self.cell_text_filler.fill_cells(tables, ocr_results, image=image, page_number=page_number)
+        self.cell_text_filler.fill_cells(tables, ocr_results, image=base_img, page_number=page_number)
         logger.info("Заполнение ячеек текстом завершено.")
 
         logger.info("Детекция абзацев...")
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
-        paragraphs = self.paragraph_detector.detect_paragraphs(image, filtered_ocr, tables, page_number=page_number)
+        paragraphs = self.paragraph_detector.detect_paragraphs(base_img, filtered_ocr, tables, page_number=page_number)
         logger.info("Детекция абзацев завершена.")
 
         page = Page(
             tables=tables,
             paragraphs=paragraphs,
-            metadata={"image_shape": list(image.shape[:2]), **alignment_metadata},
+            metadata={"image_shape": list(base_img.shape[:2]), **alignment_metadata},
         )
         return page, aligned_image
 
