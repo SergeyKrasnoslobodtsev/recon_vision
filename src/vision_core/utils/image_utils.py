@@ -45,15 +45,19 @@ def gamma_correction(image: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     return gamma_img
 
 
-def binary_threshold(gray: np.ndarray) -> np.ndarray:
+def binary_threshold(gray: np.ndarray, block_size: int = 15, C: int = 5) -> np.ndarray:
     """Преобразует изображение в бинарное с помощью адаптивного порога.
 
     Args:
         gray: Входное изображение в оттенках серого.
+        block_size: Размер блока для адаптивного порога.
+        C: Константа, вычитаемая из среднего значения.
     Returns:
         np.ndarray: Бинаризованное изображение, где белые пиксели соответствуют линиям и другим элементам.
     """
-    return cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 15, 50)
+    bin_img = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, block_size, C)
+    dilate_img = cv2.dilate(bin_img, cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1)), iterations=1)
+    return dilate_img
 
 
 def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50) -> np.ndarray:
@@ -67,9 +71,38 @@ def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50) -> n
     """
 
     horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(binary_image.shape[1] / scale), 1))
-    horizontal_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, horiz_kernel, iterations=2)
+    horizontal_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, horiz_kernel, iterations=1)
 
     return horizontal_lines
+
+
+def compute_vertical_line_mask(binary_image: np.ndarray, median_height: int = 0) -> np.ndarray:
+    """Вычисляет маску вертикальных линий на изображении.
+
+    Args:
+        binary_image: Входное бинаризованное изображение.
+        median_height: Медианная высота линий, используемая для определения размера структурного
+        элемента при морфологической обработке.
+    Returns:
+        np.ndarray: Бинарная маска, где белые пиксели соответствуют вертикальным линиям на изображении.
+    """
+
+    vert_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, median_height))
+    vertical_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, vert_kernel, iterations=1)
+
+    return vertical_lines
+
+
+def get_mask(mask1: np.ndarray, mask2: np.ndarray) -> np.ndarray:
+    """Объединяет две маски с помощью логического ИЛИ.
+
+    Args:
+        mask1: Первая бинарная маска.
+        mask2: Вторая бинарная маска.
+    Returns:
+        np.ndarray: Объединённая бинарная маска, где белые пиксели соответствуют элементам, присутствующим в обеих масках.
+    """
+    return cv2.bitwise_or(mask1, mask2)
 
 
 def find_contours(binary_image: np.ndarray) -> list[np.ndarray]:
@@ -121,34 +154,6 @@ def fit_line(cnt) -> tuple[float, float, float, float]:
     [vx, vy, x0, y0] = cv2.fitLine(cnt, cv2.DIST_L2, 0, 0.01, 0.01)
 
     return vx.item(), vy.item(), x0.item(), y0.item()
-
-
-# TODO: дублирует логику TablePreprocessor._detect_lines — рефакторить при оптимизации
-def compute_raw_line_mask(
-    gray: np.ndarray,
-    scale: int,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Вычисляет сырые маски горизонтальных и вертикальных линий.
-
-    Returns:
-        (h_mask, v_mask)
-    """
-    binary = binary_threshold(gray)
-    h_img = binary.copy()
-    v_img = binary.copy()
-
-    h_size = int(h_img.shape[1] / scale)
-    h_structure = cv2.getStructuringElement(cv2.MORPH_RECT, (h_size, 1))
-
-    h_erode_img = cv2.erode(h_img, h_structure, 2)
-    h_dilate_img = cv2.dilate(h_erode_img, h_structure, 2)
-
-    v_size = int(v_img.shape[0] / scale)
-    v_structure = cv2.getStructuringElement(cv2.MORPH_RECT, (1, v_size))
-    v_erode_img = cv2.erode(v_img, v_structure, 2)
-    v_dilate_img = cv2.dilate(v_erode_img, v_structure, 2)
-
-    return h_dilate_img, v_dilate_img
 
 
 def rotate_image(image: np.ndarray, angle_deg: float) -> np.ndarray:
