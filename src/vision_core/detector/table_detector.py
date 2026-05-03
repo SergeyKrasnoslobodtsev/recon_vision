@@ -61,23 +61,28 @@ class TableDetector:
         if self._debug_image:
             self._debug_image.on_debug_image(
                 src_image=table_mask,
-                stage="3_table_detector",
+                stage="4_table_preprocessor",
                 prefix="mask",
                 page_number=0,
             )
 
         # Извлекаем bounding boxes таблиц
-        table_bboxes = table_helper.extract_raw_tables(table_mask)
-
+        table_bboxes = table_helper.extract_raw_tables(
+            table_mask,
+            border_tol=8,
+            scale_width=0.35,
+            scale_height=0.08,
+            min_density=0.01,
+            intersection_over_min_thr=0.2,
+        )
         if self._debug_image:
             self._debug_image.on_detected_boxes(
-                boxes=table_bboxes,
-                src_image=image,
-                stage="3_table_detector",
-                prefix="raw_table_bboxes",
+                image=image,
+                boxes=[bbox.to_tuple() for bbox in table_bboxes],
+                stage="4_table_preprocessor",
+                prefix="candidates",
                 page_number=0,
             )
-
         tables: list[Table] = []
 
         for idx, bbox in enumerate(table_bboxes):
