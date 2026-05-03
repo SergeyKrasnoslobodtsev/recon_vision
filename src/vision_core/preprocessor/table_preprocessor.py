@@ -38,7 +38,7 @@ class TablePreprocessor:
         if self._debug_image:
             self._debug_image.on_debug_image(
                 src_image=binary_image,
-                stage="3_table_preprocessor",
+                stage="4_table_preprocessor",
                 prefix="binary",
                 page_number=0,
             )
