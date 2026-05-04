@@ -222,15 +222,14 @@ class DiskCacheProcessRepository:
         row_id = payload.get("row_id") or {}
         if row_id:
             row_reference = RowReference(
-                id_table=str(
-                    row_id.get("id_table")
-                    or row_id.get("num_table")
-                    or ""
-                ),
-                id_row=str(
-                    row_id.get("id_row")
-                    or row_id.get("num_row")
-                    or ""
+                id_table=str(row_id.get("id_table") or row_id.get("num_table") or ""),
+                id_row=str(row_id.get("id_row") or row_id.get("num_row") or ""),
+                id_col=(
+                    int(row_id.get("id_col"))
+                    if row_id.get("id_col") is not None
+                    else int(row_id.get("num_col"))
+                    if row_id.get("num_col") is not None
+                    else None
                 ),
             )
 
