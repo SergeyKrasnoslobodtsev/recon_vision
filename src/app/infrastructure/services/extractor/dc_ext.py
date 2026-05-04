@@ -26,10 +26,7 @@ class _DcPair:
 
 def _find_dc_pairs(table: Table) -> list[_DcPair]:
     sorted_cols = sorted(table.dc_cols)
-    return [
-        _DcPair(debit_col=sorted_cols[i], credit_col=sorted_cols[i + 1])
-        for i in range(0, len(sorted_cols) - 1, 2)
-    ]
+    return [_DcPair(debit_col=sorted_cols[i], credit_col=sorted_cols[i + 1]) for i in range(0, len(sorted_cols) - 1, 2)]
 
 
 def _detect_role(text: str, companies: list[Company]) -> str | None:
@@ -71,9 +68,7 @@ def _assign_pair_roles(table: Table, pairs: list[_DcPair], companies: list[Compa
                 continue
             covered = set(range(cell.col, cell.col + cell.colspan))
             for pair in pairs:
-                if pair.role == "unknown" and (
-                    pair.debit_col in covered or pair.credit_col in covered
-                ):
+                if pair.role == "unknown" and (pair.debit_col in covered or pair.credit_col in covered):
                     pair.role = role
     _apply_symmetry(pairs)
 
@@ -137,18 +132,30 @@ def _extract_entries(
         for pair in seller_pairs:
             d_cell = cells.get(pair.debit_col)
             c_cell = cells.get(pair.credit_col)
-            debit_entries.append(LedgerEntry(
-                record=record,
-                value=_parse_value(d_cell),
-                date=date,
-                row_reference=row_ref,
-            ))
-            credit_entries.append(LedgerEntry(
-                record=record,
-                value=_parse_value(c_cell),
-                date=date,
-                row_reference=row_ref,
-            ))
+            debit_entries.append(
+                LedgerEntry(
+                    record=record,
+                    value=_parse_value(d_cell),
+                    date=date,
+                    row_reference=RowReference(
+                        id_table=row_ref.id_table,
+                        id_row=row_ref.id_row,
+                        id_col=pair.debit_col,
+                    ),
+                )
+            )
+            credit_entries.append(
+                LedgerEntry(
+                    record=record,
+                    value=_parse_value(c_cell),
+                    date=date,
+                    row_reference=RowReference(
+                        id_table=row_ref.id_table,
+                        id_row=row_ref.id_row,
+                        id_col=pair.credit_col,
+                    ),
+                )
+            )
 
     return debit_entries, credit_entries
 
@@ -183,9 +190,7 @@ def extract_dc(
                     root_id = all_tables[root_id].continuation_of
                 source = root_pairs.get(root_id)
                 pairs = (
-                    [_DcPair(p.debit_col, p.credit_col, p.role) for p in source]
-                    if source
-                    else _find_dc_pairs(table)
+                    [_DcPair(p.debit_col, p.credit_col, p.role) for p in source] if source else _find_dc_pairs(table)
                 )
                 if not source:
                     _assign_pair_roles(table, pairs, companies)
