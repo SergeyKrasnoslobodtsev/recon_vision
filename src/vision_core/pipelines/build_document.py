@@ -172,7 +172,11 @@ class DocumentBuildPipeline:
         page = Page(
             tables=tables,
             paragraphs=paragraphs,
-            metadata={"image_shape": list(base_img.shape[:2]), **alignment_metadata},
+            metadata={
+                "source_image_shape": list(image.shape[:2]),
+                "image_shape": list(base_img.shape[:2]),
+                **alignment_metadata,
+            },
         )
         return page, aligned_image
 
