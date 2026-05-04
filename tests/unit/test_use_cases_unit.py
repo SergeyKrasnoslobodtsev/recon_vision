@@ -1,4 +1,5 @@
 import base64
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -21,8 +22,11 @@ from app.application.use_cases.get_process_status import GetProcessStatusUseCase
 from app.application.use_cases.submit_reconciliation_act import (
     SubmitReconciliationActUseCase,
 )
+from app.domain.entities.ledger_entry import LedgerEntry, RowReference
 from app.domain.entities.process import ProcessState
+from app.domain.entities.reconciliation_data import ReconciliationData
 from app.domain.enums.process_status import ProcessStatus
+from app.domain.value_objects.period import Period
 
 
 class TestSubmitReconciliationActUseCase:
@@ -125,6 +129,20 @@ class TestFillReconciliationActUseCase:
             process_id="process-123",
             status=ProcessStatus.COMPLETED,
             source_pdf=sample_pdf_bytes,
+            reconciliation_data=ReconciliationData(
+                seller="",
+                buyer="",
+                period=Period(start=None, end=None),
+                debit=[
+                    LedgerEntry(
+                        record="Реализация",
+                        value=100.0,
+                        date="2025-01-15",
+                        row_reference=RowReference(id_table="table-1", id_row="row-2", id_col=2),
+                    )
+                ],
+                credit=[],
+            ),
         )
         filled_pdf = b"%PDF-1.4 filled content"
         process_repository = AsyncMock()
@@ -135,11 +153,27 @@ class TestFillReconciliationActUseCase:
             process_repository=process_repository,
             pdf_filler=pdf_filler,
         )
-        command = FillReconciliationActCommand(process_id="process-123")
+        command = FillReconciliationActCommand(
+            process_id="process-123",
+            debit=[
+                LedgerEntry(
+                    record="Реализация",
+                    value=125.0,
+                    date="2025-01-15",
+                    row_reference=RowReference(id_table="table-1", id_row="row-2"),
+                )
+            ],
+        )
 
         result = await use_case.execute(command)
 
-        pdf_filler.fill.assert_awaited_once_with(process_state, command)
+        pdf_filler.fill.assert_awaited_once()
+        filled_command = pdf_filler.fill.await_args.args[1]
+        assert filled_command.process_id == command.process_id
+        assert filled_command.debit[0] == replace(
+            command.debit[0],
+            row_reference=RowReference(id_table="table-1", id_row="row-2", id_col=2),
+        )
         process_repository.update.assert_awaited_once_with(process_state)
         assert process_state.status == ProcessStatus.FILLED
         assert process_state.message == "Документ успешно заполнен"
