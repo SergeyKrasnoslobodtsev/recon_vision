@@ -5,7 +5,7 @@ models/
 .github/
 .claude/
 .continue/
-pullenti/
+assets/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
