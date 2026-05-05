@@ -64,7 +64,7 @@ class TablePreprocessorConfig:
     """
 
     gamma: float = 10.0
-    block_size: int = 15
+    block_size: int = 11
     C: int = 5
 
 
