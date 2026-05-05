@@ -5,6 +5,7 @@ import pytest
 from app.application.dto.fill_reconciliation_act import FillReconciliationActCommand
 from app.domain.entities.ledger_entry import LedgerEntry, RowReference
 from app.domain.entities.process import ProcessState
+from app.infrastructure.services.pdf_fill.render import format_amount
 from app.infrastructure.services.pdf_filler import DocumentPdfFiller
 from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
@@ -156,11 +157,9 @@ class TestDocumentPdfFiller:
     """Проверяет заполнение PDF на основе канонического документа."""
 
     def test_format_amount_uses_spaces_and_comma(self):
-        filler = DocumentPdfFiller()
-
-        assert filler._format_amount(0) == "0,00"
-        assert filler._format_amount(1200.5) == "1 200,50"
-        assert filler._format_amount(1234567.89) == "1 234 567,89"
+        assert format_amount(0) == "0,00"
+        assert format_amount(1200.5) == "1 200,50"
+        assert format_amount(1234567.89) == "1 234 567,89"
 
     @pytest.mark.asyncio
     async def test_fill_draws_only_debit_credit_values_and_comments(self):
@@ -178,14 +177,14 @@ class TestDocumentPdfFiller:
                 LedgerEntry(
                     record="",
                     value=1200.5,
-                    row_reference=RowReference(id_table="table-1", id_row="2", id_col=1),
+                    row_reference=RowReference(id_table="table-1", id_row="2", id_col=1, buyer_col=3),
                 )
             ],
             credit=[
                 LedgerEntry(
                     record="",
                     value=900.0,
-                    row_reference=RowReference(id_table="table-1", id_row="2", id_col=2),
+                    row_reference=RowReference(id_table="table-1", id_row="2", id_col=2, buyer_col=4),
                 )
             ],
         )
