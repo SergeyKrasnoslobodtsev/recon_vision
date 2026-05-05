@@ -141,32 +141,33 @@ class DocumentBuildPipeline:
         Returns:
             Кортеж (страница, выровненное изображение до препроцессора).
         """
-        logger.info("Предобработка изображения...")
-        image = self.image_preprocessor.process(image, page_number=page_number)
-        logger.info("Предобработка завершена.")
 
         logger.info("Коррекция ориентации и наклона...")
         aligned_image, alignment_metadata = self.orientation_preprocessor.process(image, page_number=page_number)
         logger.info("Коррекция завершена.")
 
-        base_img = aligned_image.copy()
+        logger.info("Предобработка изображения...")
+        image_ocr = self.image_preprocessor.process(aligned_image, page_number=page_number)
+        logger.info("Предобработка завершена.")
 
         logger.info("Детекция таблиц и ячеек...")
-        tables = self.table_detector.detect_tables(base_img)
+        tables = self.table_detector.detect_tables(aligned_image)
         logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
         logger.info("Детекция таблиц и ячеек завершена.")
 
         logger.info("Распознавание текста OCR...")
-        ocr_results = self._run_ocr(base_img)
+        ocr_results = self._run_ocr(image_ocr)
         logger.info("Распознавание текста OCR завершено.")
 
         logger.info("Заполнение ячеек текстом...")
-        self.cell_text_filler.fill_cells(tables, ocr_results, image=base_img, page_number=page_number)
+        self.cell_text_filler.fill_cells(tables, ocr_results, image=aligned_image, page_number=page_number)
         logger.info("Заполнение ячеек текстом завершено.")
 
         logger.info("Детекция абзацев...")
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
-        paragraphs = self.paragraph_detector.detect_paragraphs(base_img, filtered_ocr, tables, page_number=page_number)
+        paragraphs = self.paragraph_detector.detect_paragraphs(
+            aligned_image, filtered_ocr, tables, page_number=page_number
+        )
         logger.info("Детекция абзацев завершена.")
 
         page = Page(
@@ -174,7 +175,7 @@ class DocumentBuildPipeline:
             paragraphs=paragraphs,
             metadata={
                 "source_image_shape": list(image.shape[:2]),
-                "image_shape": list(base_img.shape[:2]),
+                "image_shape": list(aligned_image.shape[:2]),
                 **alignment_metadata,
             },
         )
@@ -189,7 +190,6 @@ class DocumentBuildPipeline:
         Returns:
             Список OCR-результатов.
         """
-        # bgr_image = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
         results = self.ocr_engine.predict(image)
         if not results or not results[0]:
             logger.warning("OCR не распознал текст на странице.")
