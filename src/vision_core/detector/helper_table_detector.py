@@ -235,7 +235,8 @@ def extract_raw_horizontal_lines(
         где (x1, y1) и (x2, y2) - координаты начала и конца линии.
     """
 
-    horizontal_lines = image_utils.compute_horizontal_line_mask(roi_image, scale=scale)
+    horizontal_lines = image_utils.compute_horizontal_line_mask(roi_image, scale=scale, iterations=2)
+    horizontal_lines = image_utils.dilate_image(horizontal_lines, kernel_size=(1, 1), iterations=1)
     h_raw_lines = geometry_utils.find_hough_lines(
         horizontal_lines,
         threshold=15,
