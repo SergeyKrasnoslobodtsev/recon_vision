@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from loguru import logger
 
@@ -110,11 +110,10 @@ def _build_row_data(cells: dict, left_bound: int) -> tuple[str, str | None]:
     return " ".join(record_parts), date
 
 
-def _extract_entries(
-    table: Table,
-    pairs: list[_DcPair],
-) -> tuple[list[LedgerEntry], list[LedgerEntry]]:
-    seller_pairs = [p for p in pairs if p.role == "seller"] or pairs[:1]
+def _extract_entries(table: Table, pairs: list[_DcPair], role: str) -> tuple[list[LedgerEntry], list[LedgerEntry]]:
+    role_pairs = [p for p in pairs if p.role == role]
+    if not role_pairs:
+        raise ValueError(f"таблица {table.id}: колонки '{role}' не найдены")
     header_row = table.get_dc_header_row()
     left_bound = min(table.dc_cols)
     rows = table.get_rows()
@@ -127,9 +126,8 @@ def _extract_entries(
             continue
         cells = {cell.col: cell for cell in row}
         record, date = _build_row_data(cells, left_bound)
-        row_ref = RowReference(id_table=table.id, id_row=str(row_idx))
 
-        for pair in seller_pairs:
+        for pair in role_pairs:
             d_cell = cells.get(pair.debit_col)
             c_cell = cells.get(pair.credit_col)
             debit_entries.append(
@@ -138,8 +136,8 @@ def _extract_entries(
                     value=_parse_value(d_cell),
                     date=date,
                     row_reference=RowReference(
-                        id_table=row_ref.id_table,
-                        id_row=row_ref.id_row,
+                        id_table=table.id,
+                        id_row=str(row_idx),
                         id_col=pair.debit_col,
                     ),
                 )
@@ -150,8 +148,8 @@ def _extract_entries(
                     value=_parse_value(c_cell),
                     date=date,
                     row_reference=RowReference(
-                        id_table=row_ref.id_table,
-                        id_row=row_ref.id_row,
+                        id_table=table.id,
+                        id_row=str(row_idx),
                         id_col=pair.credit_col,
                     ),
                 )
@@ -164,7 +162,11 @@ def extract_dc(
     document: Document,
     companies: list[Company],
 ) -> tuple[list[LedgerEntry], list[LedgerEntry]]:
-    """Извлекает дебет/кредит продавца из всех таблиц документа."""
+    """Извлекает дебет/кредит из всех таблиц документа.
+
+    Каждая запись содержит значение продавца и buyer_col — колонку покупателя для заполнения PDF.
+    Поднимает ValueError если в таблице не найдены колонки продавца или покупателя.
+    """
     all_tables: dict[str, Table] = {t.id: t for p in document.pages for t in p.tables}
 
     root_pairs: dict[str, list[_DcPair]] = {}
@@ -201,9 +203,18 @@ def extract_dc(
             else:
                 pairs = root_pairs.get(table.id, [])
 
-            debit, credit = _extract_entries(table, pairs)
-            all_debit.extend(debit)
-            all_credit.extend(credit)
+            debit, credit = _extract_entries(table, pairs, "seller")
+            buyer_debit, buyer_credit = _extract_entries(table, pairs, "buyer")
+            enriched_debit = [
+                replace(s, row_reference=replace(s.row_reference, buyer_col=b.row_reference.id_col))
+                for s, b in zip(debit, buyer_debit, strict=False)
+            ]
+            enriched_credit = [
+                replace(s, row_reference=replace(s.row_reference, buyer_col=b.row_reference.id_col))
+                for s, b in zip(credit, buyer_credit, strict=False)
+            ]
+            all_debit.extend(enriched_debit)
+            all_credit.extend(enriched_credit)
 
     logger.info(f"dc: {len(all_debit)} дебет, {len(all_credit)} кредит")
     return all_debit, all_credit
