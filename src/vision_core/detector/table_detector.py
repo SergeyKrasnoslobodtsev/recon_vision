@@ -90,17 +90,17 @@ class TableDetector:
             roi_mask = bbox.roi(binary_image)
             h_raw_lines = table_helper.extract_raw_horizontal_lines(
                 roi_mask,
-                scale=40,
-                min_line_length=max(1, int(bbox.width // 10)),
+                scale=20,
+                min_line_length=max(1, int(bbox.width // 8)),
                 max_line_gap=max(1, int(bbox.width // 10)),
             )
 
             h_lines = table_helper.extract_lines(
                 np.asarray(h_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.Y,
-                axis_tol=10,
+                axis_tol=5,
                 merge_gap=5,
-                min_len=10,
+                min_len=200,
             )
             logger.debug(f"Горизонтальных линий в таблице {idx}: {len(h_lines)}")
             if len(h_lines) == 0:
@@ -128,9 +128,9 @@ class TableDetector:
             v_lines = table_helper.extract_lines(
                 np.asarray(v_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.X,
-                axis_tol=10,
+                axis_tol=5,
                 merge_gap=5,
-                min_len=10,
+                min_len=median_height,
             )
             if len(v_lines) == 0:
                 logger.debug(f"Пропущена таблица {idx}: не найдено вертикальных линий")
