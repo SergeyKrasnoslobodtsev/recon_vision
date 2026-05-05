@@ -66,8 +66,12 @@ class RowSplitter:
         )
 
     def _count_splits(self, row_cells: list[Cell], dc_cols: set[int]) -> int:
-        """Возвращает число строк для разбивки по количеству blobs в DC-ячейках."""
-        counts = [len(cell.blobs) for cell in row_cells if cell.col in dc_cols and cell.blobs]
+        """Возвращает число строк для разбивки по количеству blobs в DC-ячейках с фактическими значениями."""
+        counts = [
+            len(cell.blobs)
+            for cell in row_cells
+            if cell.col in dc_cols and cell.blobs and cell.value and cell.value.strip()
+        ]
         return max(counts, default=1)
 
     def _calc_boundaries(
@@ -80,12 +84,14 @@ class RowSplitter:
         for cell in row_cells:
             if cell.col not in dc_cols or len(cell.blobs) != n:
                 continue
+            if not cell.value or not cell.value.strip():
+                continue
             blobs = sorted(cell.blobs, key=lambda b: b.y_min)
             return [(blobs[i].y_max + blobs[i + 1].y_min) / 2 for i in range(n - 1)]
 
-        # fallback: равномерное деление bbox первой DC-ячейки
+        # fallback: равномерное деление bbox первой DC-ячейки с контентом
         for cell in row_cells:
-            if cell.col in dc_cols:
+            if cell.col in dc_cols and cell.value and cell.value.strip():
                 step = cell.bbox.height / n
                 return [cell.bbox.y_min + step * (i + 1) for i in range(n - 1)]
 
