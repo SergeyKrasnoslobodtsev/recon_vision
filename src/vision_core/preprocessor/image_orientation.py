@@ -48,11 +48,17 @@ class PageOrientationPreprocessor:
         deskew_angle = self.compute_deskew_angle(aligned_image)
         metadata["deskew_angle_deg"] = deskew_angle
 
+        if deskew_angle == 0.0:
+            return aligned_image, metadata
+
         aligned_image = image_utils.rotate_image(aligned_image, deskew_angle)
 
         if self._debug:
             self._debug.on_debug_image(
-                src_image=aligned_image, stage="3_aligned", prefix="page", page_number=page_number
+                src_image=aligned_image,
+                stage="3_aligned",
+                prefix="page",
+                page_number=page_number,
             )
 
         return aligned_image, metadata
@@ -107,11 +113,10 @@ class PageOrientationPreprocessor:
         logger.debug(f"Углы наклона: {angles}, веса: {weights}, итоговый угол: {angle:.4f}°")
         return angle
 
-    def _preprocess_image(self, image: np.ndarray, gamma: float = 1.5) -> np.ndarray:
+    def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """Применяет предобработку к изображению перед классификацией ориентации."""
-        # Применяем гамма-коррекцию для улучшения контраста
-        gamma_corrected = image_utils.gamma_correction(image, gamma=gamma)
-        binary = image_utils.binary_threshold(gamma_corrected)
+        gamma_corrected = image_utils.gamma_correction(image)
+        binary = image_utils.binary_threshold(gamma_corrected, block_size=11, C=5)
         return binary
 
     def _detected_raw_tables(self, image: np.ndarray) -> list[BBox]:
