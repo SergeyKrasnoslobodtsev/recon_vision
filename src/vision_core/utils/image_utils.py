@@ -60,7 +60,7 @@ def binary_threshold(gray: np.ndarray, block_size: int = 15, C: int = 5) -> np.n
     return dilate_img
 
 
-def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50) -> np.ndarray:
+def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50, iterations: int = 1) -> np.ndarray:
     """Вычисляет маску горизонтальных линий на изображении.
 
     Args:
@@ -71,9 +71,22 @@ def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50) -> n
     """
 
     horiz_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(binary_image.shape[1] / scale), 1))
-    horizontal_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, horiz_kernel, iterations=1)
+    horizontal_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, horiz_kernel, iterations=iterations)
 
     return horizontal_lines
+
+
+def dilate_image(image: np.ndarray, kernel_size: tuple[int, int] = (1, 1), iterations: int = 1) -> np.ndarray:
+    """Применяет операцию дилатации к изображению.
+
+    Args:
+        image: Входное бинаризованное изображение.
+        kernel_size: Размер структурного элемента для дилатации.
+        iterations: Количество итераций дилатации.
+    Returns:
+        np.ndarray: Изображение после применения дилатации.
+    """
+    return cv2.dilate(image, cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size), iterations=iterations)
 
 
 def compute_vertical_line_mask(binary_image: np.ndarray, median_height: int = 0) -> np.ndarray:
