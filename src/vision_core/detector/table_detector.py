@@ -1,7 +1,7 @@
 import numpy as np
 from loguru import logger
 
-from vision_core.config import TableCellDetectorConfig, TableDetectorConfig, TablePreprocessorConfig
+from vision_core.config import TableDetectorConfig, TablePreprocessorConfig
 from vision_core.debug_image_observer import DebugImageObserver
 from vision_core.detector import helper_table_detector as table_helper
 from vision_core.entities.table import Table
@@ -54,8 +54,8 @@ class TableDetector:
         """
         # Создаем маску таблицы локально для текущего изображения.
         binary_image = self._preprocess(image)
-        h_line_mask = image_utils.compute_horizontal_line_mask(binary_image, scale=40)
-        v_line_mask = image_utils.compute_vertical_line_mask(binary_image, median_height=40)
+        h_line_mask = image_utils.compute_horizontal_line_mask(binary_image, scale=self.cfg.scale_horizontal_line)
+        v_line_mask = image_utils.compute_vertical_line_mask(binary_image, median_height=self.cfg.height_vertical_line)
         table_mask = image_utils.get_mask(h_line_mask, v_line_mask)
 
         if self._debug_image:
@@ -69,11 +69,11 @@ class TableDetector:
         # Извлекаем bounding boxes таблиц
         table_bboxes = table_helper.extract_raw_tables(
             table_mask,
-            border_tol=8,
-            scale_width=0.35,
-            scale_height=0.08,
-            min_density=0.01,
-            intersection_over_min_thr=0.2,
+            border_tol=self.cfg.border_tol,
+            scale_width=self.cfg.scale_width,
+            scale_height=self.cfg.scale_height,
+            min_density=self.cfg.min_density,
+            intersection_over_min_thr=self.cfg.intersection_over_min_thr,
         )
         if self._debug_image:
             self._debug_image.on_detected_boxes(
@@ -90,17 +90,17 @@ class TableDetector:
             roi_mask = bbox.roi(binary_image)
             h_raw_lines = table_helper.extract_raw_horizontal_lines(
                 roi_mask,
-                scale=20,
-                min_line_length=max(1, int(bbox.width // 8)),
-                max_line_gap=max(1, int(bbox.width // 10)),
+                scale=self.cfg.scale_horizontal_line,
+                min_line_length=max(1, int(bbox.width // self.cfg.min_line_length_ratio)),
+                max_line_gap=max(1, int(bbox.width // self.cfg.max_line_gap_ratio)),
             )
 
             h_lines = table_helper.extract_lines(
                 np.asarray(h_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.Y,
-                axis_tol=5,
-                merge_gap=5,
-                min_len=200,
+                axis_tol=self.cfg.h_axis_tol,
+                merge_gap=self.cfg.h_merge_gap,
+                min_len=self.cfg.h_min_line_length,
             )
             logger.debug(f"Горизонтальных линий в таблице {idx}: {len(h_lines)}")
             if len(h_lines) == 0:
@@ -128,8 +128,8 @@ class TableDetector:
             v_lines = table_helper.extract_lines(
                 np.asarray(v_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.X,
-                axis_tol=5,
-                merge_gap=5,
+                axis_tol=self.cfg.v_axis_tol,
+                merge_gap=self.cfg.v_merge_gap,
                 min_len=median_height,
             )
             if len(v_lines) == 0:
