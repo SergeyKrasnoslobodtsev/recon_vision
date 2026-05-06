@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from extractor.exceptions import DcExtractionError
 from loguru import logger
 
 from app.domain.entities.ledger_entry import LedgerEntry, RowReference
@@ -13,6 +12,8 @@ from extractor.process import extract
 from extractor.tokenize import CurrencyReference, DateReference
 from vision_core.entities.document import Document
 from vision_core.entities.table import Table
+
+from .exceptions import DcExtractionError
 
 _SELLER_KEYWORDS = {"ОТ ПРОДАВЦА", "ПРОДАВЕЦ", "ПО ДАННЫМ ПРОДАВЦА"}
 _BUYER_KEYWORDS = {"ОТ ПОКУПАТЕЛЯ", "ПОКУПАТЕЛЬ", "ПО ДАННЫМ ПОКУПАТЕЛЯ"}
@@ -208,12 +209,11 @@ def extract_dc(
                     f"из таблицы {root_id}"
                 )
             else:
-                logger.error(
-                    f"таблица {table.id}: дебет/кредит найдены, но не указано продолжение для наследования ролей"
-                )
-                raise DcExtractionError(
-                    table_id=table.id, details="дебет/кредит найдены, но не определены пары колонок"
-                )
+                pairs = root_pairs.get(table.id, [])
+
+            if not pairs:
+                logger.error(f"таблица {table.id}: не удалось определить пары дебет/кредит")
+                raise DcExtractionError(table_id=table.id, details="не удалось определить пары дебет/кредит")
 
             debit, credit = _extract_entries(table, pairs, "seller")
             buyer_debit, buyer_credit = _extract_entries(table, pairs, "buyer")
