@@ -4,6 +4,7 @@ import numpy as np
 from paddleocr import PaddleOCR
 
 from vision_core.config import PaddleOcrConfig
+from vision_core.exceptions import ModelLoadError
 from vision_core.ocr.base import OcrEngine, OcrResult
 
 
@@ -39,16 +40,19 @@ class PaddleOcrEngine(OcrEngine):
                 f"Директория модели распознавания текста не найдена: {self.cfg.text_recognition_model_dir}"
             )
 
-        self.ocr = PaddleOCR(
-            text_recognition_model_name=self.cfg.text_recognition_model_name,
-            text_recognition_model_dir=self.cfg.text_recognition_model_dir,
-            text_detection_model_name=self.cfg.text_detection_model_name,
-            text_detection_model_dir=self.cfg.text_detection_model_dir,
-            use_doc_orientation_classify=self.cfg.use_doc_orientation_classify,
-            use_doc_unwarping=self.cfg.use_doc_unwarping,
-            use_textline_orientation=self.cfg.use_textline_orientation,
-            device=self.cfg.device,
-        )
+        try:
+            self.ocr = PaddleOCR(
+                text_recognition_model_name=self.cfg.text_recognition_model_name,
+                text_recognition_model_dir=self.cfg.text_recognition_model_dir,
+                text_detection_model_name=self.cfg.text_detection_model_name,
+                text_detection_model_dir=self.cfg.text_detection_model_dir,
+                use_doc_orientation_classify=self.cfg.use_doc_orientation_classify,
+                use_doc_unwarping=self.cfg.use_doc_unwarping,
+                use_textline_orientation=self.cfg.use_textline_orientation,
+                device=self.cfg.device,
+            )
+        except Exception as e:
+            raise ModelLoadError(details=str(e)) from e
 
     def predict_iter(self, images: np.ndarray | list[np.ndarray]):
         """Распознаёт текст на изображениях в итеративном режиме.
