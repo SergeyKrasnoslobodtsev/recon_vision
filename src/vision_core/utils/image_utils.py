@@ -19,6 +19,21 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
     return image.copy()
 
 
+def unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.5, amount=1.0) -> np.ndarray:
+    """Применяет unsharp masking для повышения резкости изображения.
+    Args:
+        image: Входное изображение в формате BGR или RGB.
+        kernel_size: Размер ядра для размытия при unsharp masking.
+        sigma: Стандартное отклонение для гауссова размытия при unsharp masking.
+        amount: Коэффициент усиления для unsharp masking.
+    Returns:
+        np.ndarray: Изображение после применения unsharp masking.
+    """
+    blurred = cv2.GaussianBlur(image, kernel_size, sigma)
+    sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
+    return sharpened
+
+
 def gamma_correction(image: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     """Применяет гамма-коррекцию для улучшения видимости линий на изображении.
 
