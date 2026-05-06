@@ -1,11 +1,24 @@
 import numpy as np
 import pymupdf
 
+from vision_core.exceptions import PdfLoadError
+
 
 class PDFLoader:
     """Загрузчик PDF документов"""
 
     def __init__(self, pdf_bytes: bytes):
+        """
+        Инициализация загрузчика
+
+        Args:
+            pdf_bytes: PDF документ в байтах
+        """
+        self.pdf_bytes = pdf_bytes
+        try:
+            self.doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        except Exception as e:
+            raise PdfLoadError(details=str(e)) from e
         """
         Инициализация загрузчика
 
