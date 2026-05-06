@@ -1,12 +1,18 @@
 """Иерархия исключений vision_core.
 
 Структура:
-    VisionCoreError                     # базовый абстрактный класс
-      DocumentParseError                # ошибки разбора структуры документа
-        DcColsNotFoundError             # не найдены колонки дебет/кредит
-        DcColsInvalidPositionError      # нарушено расположение дебет/кредит
-      PdfLoadError                      # ошибки загрузки PDF
-      OcrError                          # ошибки OCR-движка
+    VisionCoreError                       # базовый абстрактный класс
+      ModelLoadError                      # ошибки загрузки моделей
+      DocumentParseError                  # ошибки разбора структуры документа
+        DcColsNotFoundError               # не найдены колонки дебет/кредит
+        DcColsInvalidPositionError        # нарушено расположение дебет/кредит
+        TableNotFoundError                # не найдены таблицы
+        TableParseError                   # ошибка разбора таблицы
+        ParagraphNotFoundError            # не найдены параграфы
+      PdfLoadError                        # ошибки загрузки PDF
+      OcrError                            # ошибки OCR-движка
+        RecognitionQualityError           # качество распознавания ниже порога
+        OcrEmptyResultError               # OCR не вернул результатов
 """
 
 from __future__ import annotations
@@ -25,9 +31,16 @@ class VisionCoreError(Exception):
         super().__init__(self.message.format(**kwargs) if kwargs else self.message)
 
 
+class ModelLoadError(VisionCoreError):
+    """Ошибка загрузки модели."""
+
+    message = "Ошибка загрузки модели: {details}"
+
+
 # ---------------------------------------------------------------------------
 # Разбор документа
 # ---------------------------------------------------------------------------
+
 
 class DocumentParseError(VisionCoreError):
     """Ошибка разбора структуры документа."""
@@ -50,9 +63,28 @@ class DcColsInvalidPositionError(DocumentParseError):
     )
 
 
+class TableNotFoundError(DocumentParseError):
+    """Ошибка разбора структуры таблицы."""
+
+    message = "В документе не найдены таблицы"
+
+
+class TableParseError(DocumentParseError):
+    """Ошибка разбора структуры таблицы."""
+
+    message = "Ошибка разбора структуры таблицы: {details}"
+
+
+class ParagraphNotFoundError(DocumentParseError):
+    """Ошибка разбора структуры документа: не найдено ни одного абзаца."""
+
+    message = "В документе не найдено ни одного абзаца"
+
+
 # ---------------------------------------------------------------------------
 # Загрузка PDF
 # ---------------------------------------------------------------------------
+
 
 class PdfLoadError(VisionCoreError):
     """Не удалось загрузить PDF."""
@@ -64,10 +96,17 @@ class PdfLoadError(VisionCoreError):
 # OCR
 # ---------------------------------------------------------------------------
 
+
 class OcrError(VisionCoreError):
     """Ошибка OCR-движка."""
 
     message = "Ошибка OCR-движка"
+
+
+class RecognitionQualityError(OcrError):
+    """Качество распознавания OCR ниже допустимого порога."""
+
+    message = "Качество распознавания OCR слишком низкое: средняя уверенность {mean_confidence:.2f}"
 
 
 class OcrEmptyResultError(OcrError):
