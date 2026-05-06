@@ -1,6 +1,41 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+_PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DEFAULT_MODELS_DIR = _PROJECT_ROOT / "models"
+
+
+@dataclass
+class PageOrientationPreprocessorConfig:
+    """Конфигурация препроцессора определения ориентации страницы.
+
+    Attributes:
+        model_name (str): Название модели классификации ориентации документа.
+        model_dir (str): Директория с моделью классификации ориентации документа.
+        min_orientation_score (float): Минимальный score классификатора ориентации для применения поворота.
+        gamma (float): Параметр гамма-коррекции для улучшения видимости линий на изображении.
+        block_size (int): Размер блока для адаптивного порога при предобработке изображения перед классификацией ориентации.
+        C (int): Константа вычитания для адаптивного порога при предобработке изображения перед классификацией ориентации.
+        scale_horizontal_line (int): Минимальная длина горизонтальной линии для учёта при вычислении угла наклона страницы.
+        height_vertical_line (int): Минимальная длина вертикальной линии для учёта при вычислении угла наклона страницы.
+
+        Note:
+            Параметры `scale_horizontal_line` и `height_vertical_line` используются для определения кандидатов таблиц.
+            Для расчета угла наклона страницы используется вырезанное бинарное изображение, на котором повторно
+            используется алгоритм поиска горизонтальных линий с параметром `scale = 10`
+
+    """
+
+    model_name: str = "PP-LCNet_x1_0_doc_ori"
+    model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-LCNet_x1_0_doc_ori")
+    min_orientation_score: float = 0.6
+
+    gamma: float = 10.0
+    block_size: int = 15
+    C: int = 5
+    scale_horizontal_line: int = 40
+    height_vertical_line: int = 40
+
 
 @dataclass
 class ImagePreprocessorConfig:
@@ -18,42 +53,6 @@ class ImagePreprocessorConfig:
 
 
 @dataclass
-class TableDetectorConfig:
-    """Конфигурация детектора таблиц
-
-    Attributes:
-        min_table_area: Минимальная площадь таблицы
-        approx_poly_eps: Порог аппроксимации многоугольника
-        mode_merge_cells: Режим объединения ячеек поддерживает:
-        - all - объединяет строки и столбцы
-        - cols - объединяет только столбцы
-        - rows - объединяет только строки
-        - None - не объединяет ячейки
-    """
-
-    min_table_area: int = 10000
-    approx_poly_eps: float = 0.02
-    mode_merge_cells: str | None = "cols"
-
-
-@dataclass
-class TableCellDetectorConfig:
-    """Конфигурация детекции ячеек
-
-    Attributes:
-        min_cell: Минимальный размер ячейки
-        padding: Отступ вокруг ячейки
-        threshold_line: Порог для группировки линий в пикселях
-        coverage_thr: Порог покрытия для объединения линий
-    """
-
-    min_cell: int = 10
-    padding: int = 10
-    threshold_line: int = 4
-    coverage_thr: float = 0.8
-
-
-@dataclass
 class TablePreprocessorConfig:
     """Конфигурация препроцессора таблиц
 
@@ -68,8 +67,64 @@ class TablePreprocessorConfig:
     C: int = 5
 
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DEFAULT_MODELS_DIR = _PROJECT_ROOT / "models"
+@dataclass
+class TableDetectorConfig:
+    """Конфигурация детектора таблиц
+
+    Attributes:
+        scale_horizontal_line: Минимальная длина горизонтальной линии для расчета кандидатов таблиц
+        height_vertical_line: Минимальная длина вертикальной линии для расчета кандидатов таблиц
+        border_tol: Допуск для расширения границ таблицы при извлечении кандидатов таблиц
+        scale_width: Масштаб для расширения границ таблицы по ширине при извлечении кандидатов таблиц
+        scale_height: Масштаб для расширения границ таблицы по высоте при извлечении кандидатов таблиц
+        min_density: Минимальная плотность линий для учета таблицы при извлечении кандидатов таблиц
+        intersection_over_min_thr: Минимальное пересечение с линиями для учета таблицы при извлечении кандидатов таблиц
+        scale_horizontal_line: Минимальная длина горизонтальной линии (расчитывается на основе ширины таблицы),
+            для объединения линий при извлечении ячеек
+        min_line_length_ratio: Минимальная длина линии для объединения при извлечении ячеек, рассчитывается как ширина
+            таблицы, делённая на min_line_length_ratio
+        max_line_gap_ratio: Максимальный разрыв между линиями для объединения при извлечении ячеек, рассчитывается
+            как ширина таблицы, делённая на max_line_gap_ratio
+        h_axis_tol: Допуск для определения горизонтальных линий при извлечении ячеек
+        h_merge_gap: Максимальный разрыв между горизонтальными линиями для их объединения при извлечении ячеек
+        h_min_line_length: Минимальная длина горизонтальной линии для её учета при извлечении ячеек
+        max_line_gap_ratio_v: Максимальный разрыв между вертикальными линиями для объединения при извлечении ячеек,
+            рассчитывается как медианная высота строк, умноженная на max_line_gap_ratio_v
+        v_axis_tol: Допуск для определения вертикальных линий при извлечении ячеек
+        v_merge_gap: Максимальный разрыв между вертикальными линиями для их объединения при извлечении ячеек
+
+        mode_merge_cells: Режим объединения ячеек поддерживает:
+        - all - объединяет строки и столбцы
+        - cols - объединяет только столбцы
+        - rows - объединяет только строки
+        - None - не объединяет ячейки
+    """
+
+    ## detected raw table candidates
+    scale_horizontal_line: int = 40
+    height_vertical_line: int = 40
+    border_tol: int = 8
+    scale_width: float = 0.35
+    scale_height: float = 0.08
+    min_density: float = 0.01
+    intersection_over_min_thr: float = 0.2
+
+    # detected raw horizontal lines
+    scale_horizontal_line: int = 20
+    min_line_length_ratio: int = 8
+    max_line_gap_ratio: int = 10
+
+    # axis horizontal lines
+    h_axis_tol: int = 5
+    h_merge_gap: int = 5
+    h_min_line_length: int = 200
+
+    # detected raw vertical lines
+    max_line_gap_ratio_v: float = 0.1
+    v_axis_tol: int = 5
+    v_merge_gap: int = 5
+
+    mode_merge_cells: str | None = "cols"
 
 
 @dataclass
@@ -95,33 +150,6 @@ class PaddleOcrConfig:
     use_doc_unwarping: bool = False
     use_textline_orientation: bool = False
     device: str = "gpu"
-
-
-@dataclass
-class PageOrientationPreprocessorConfig:
-    """Конфигурация препроцессора определения ориентации страницы.
-
-    Attributes:
-        model_name: Название модели классификации ориентации документа.
-        model_dir: Директория с моделью классификации ориентации документа.
-        enabled: Включено ли выравнивание страницы в pipeline.
-        min_orientation_score: Минимальный score классификатора ориентации для применения поворота.
-        max_skew_deg: Максимальный угол для fine deskew.
-        coarse_step_deg: Шаг грубого поиска угла deskew.
-        fine_window_deg: Окно точного поиска вокруг лучшего угла грубого этапа.
-        fine_step_deg: Шаг точного поиска угла deskew.
-        min_abs_deskew_angle_deg: Минимальный по модулю угол, который стоит применять.
-    """
-
-    model_name: str = "PP-LCNet_x1_0_doc_ori"
-    model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-LCNet_x1_0_doc_ori")
-    min_orientation_score: float = 0.6
-    # edge rotation detection
-    edge_scan_range_deg: float = 45.0  # максимальный угол для сканирования краев
-    edge_scan_step_deg: float = 0.5  # шаг между углами для сканирования краев
-    edge_scan_deviation_deg: float = 0.5  # максимальное отклонение между углами с разных краев
-    edge_scan_size: int = -1  # -1 = весь край
-    edge_scan_depth: float = 0.5  # доля ширины/высоты для сканирования
 
 
 @dataclass
@@ -167,7 +195,6 @@ class VisionCoreConfig:
 
     image_preprocessor: ImagePreprocessorConfig = field(default_factory=ImagePreprocessorConfig)
     table_detector: TableDetectorConfig = field(default_factory=TableDetectorConfig)
-    cell_detector: TableCellDetectorConfig = field(default_factory=TableCellDetectorConfig)
     table_preprocessor: TablePreprocessorConfig = field(default_factory=TablePreprocessorConfig)
 
     paddleocr: PaddleOcrConfig = field(default_factory=PaddleOcrConfig)
@@ -185,10 +212,9 @@ class VisionCoreConfig:
         """Создание из словаря (для загрузки из JSON/YAML)"""
         return cls(
             dpi=config_dict.get("dpi", 300),
-            ocr_confidence_threshold=config_dict.get("ocr_confidence_threshold", 0.7),
+            ocr_confidence_threshold=config_dict.get("ocr_confidence_threshold", 0.5),
             image_preprocessor=ImagePreprocessorConfig(**config_dict.get("image_preprocessor", {})),
             table_detector=TableDetectorConfig(**config_dict.get("table_detector", {})),
-            cell_detector=TableCellDetectorConfig(**config_dict.get("cell_detector", {})),
             table_preprocessor=TablePreprocessorConfig(**config_dict.get("table_preprocessor", {})),
             paddleocr=PaddleOcrConfig(**config_dict.get("paddleocr", {})),
             page_orientation_preprocessor=PageOrientationPreprocessorConfig(
@@ -196,3 +222,37 @@ class VisionCoreConfig:
             ),
             paragraph_detector=ParagraphDetectorConfig(**config_dict.get("paragraph_detector", {})),
         )
+
+    @classmethod
+    def from_yaml(cls, yaml_path: str) -> "VisionCoreConfig":
+        """Загрузка конфигурации из YAML файла"""
+        import yaml
+
+        with open(yaml_path) as f:
+            config_dict = yaml.safe_load(f)
+        return cls.from_dict(config_dict)
+
+    @classmethod
+    def from_json(cls, json_path: str) -> "VisionCoreConfig":
+        """Загрузка конфигурации из JSON файла"""
+        import json
+
+        with open(json_path) as f:
+            config_dict = json.load(f)
+        return cls.from_dict(config_dict)
+
+    @classmethod
+    def save_to_yaml(cls, config: "VisionCoreConfig", yaml_path: str):
+        """Сохранение конфигурации в YAML файл"""
+        import yaml
+
+        with open(yaml_path, "w") as f:
+            yaml.dump(config.__dict__, f, default_flow_style=False)
+
+    @classmethod
+    def save_to_json(cls, config: "VisionCoreConfig", json_path: str):
+        """Сохранение конфигурации в JSON файл"""
+        import json
+
+        with open(json_path, "w") as f:
+            json.dump(config.__dict__, f, indent=4)
