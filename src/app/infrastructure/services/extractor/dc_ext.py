@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
+from extractor.exceptions import DcExtractionError
 from loguru import logger
 
 from app.domain.entities.ledger_entry import LedgerEntry, RowReference
@@ -113,7 +114,7 @@ def _build_row_data(cells: dict, left_bound: int) -> tuple[str, str | None]:
 def _extract_entries(table: Table, pairs: list[_DcPair], role: str) -> tuple[list[LedgerEntry], list[LedgerEntry]]:
     role_pairs = [p for p in pairs if p.role == role]
     if not role_pairs:
-        raise ValueError(f"таблица {table.id}: колонки '{role}' не найдены")
+        raise DcExtractionError(table_id=table.id, details=f"колонки '{role}' не найдены")
     header_row = table.get_dc_header_row()
     left_bound = min(table.dc_cols)
     rows = table.get_rows()
@@ -176,6 +177,9 @@ def extract_dc(
                 continue
             pairs = _find_dc_pairs(table)
             _assign_pair_roles(table, pairs, companies)
+            if not pairs:
+                logger.error(f"таблица {table.id}: не удалось определить пары дебет/кредит")
+                raise DcExtractionError(table_id=table.id, details="не удалось определить пары дебет/кредит")
             root_pairs[table.id] = pairs
             logger.debug(f"таблица {table.id}: пары {[(p.debit_col, p.credit_col, p.role) for p in pairs]}")
 
@@ -196,12 +200,20 @@ def extract_dc(
                 )
                 if not source:
                     _assign_pair_roles(table, pairs, companies)
+                if not pairs:
+                    logger.error(f"таблица {table.id}: не удалось определить пары дебет/кредит")
+                    raise DcExtractionError(table_id=table.id, details="не удалось определить пары дебет/кредит")
                 logger.debug(
-                    f"таблица {table.id} (продолжение {root_id}): "
-                    f"роли унаследованы {[(p.debit_col, p.credit_col, p.role) for p in pairs]}"
+                    f"таблица {table.id}: наследует пары {[(p.debit_col, p.credit_col, p.role) for p in pairs]} "
+                    f"из таблицы {root_id}"
                 )
             else:
-                pairs = root_pairs.get(table.id, [])
+                logger.error(
+                    f"таблица {table.id}: дебет/кредит найдены, но не указано продолжение для наследования ролей"
+                )
+                raise DcExtractionError(
+                    table_id=table.id, details="дебет/кредит найдены, но не определены пары колонок"
+                )
 
             debit, credit = _extract_entries(table, pairs, "seller")
             buyer_debit, buyer_credit = _extract_entries(table, pairs, "buyer")

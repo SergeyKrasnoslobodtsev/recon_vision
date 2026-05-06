@@ -6,6 +6,7 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
+from extractor.exceptions import CompanyNotFoundError, RoleAssignmentError, RoleAssignmentNotFoundError
 from loguru import logger
 
 from extractor.process import extract
@@ -245,11 +246,21 @@ def extract_companies(document: Document) -> list[Company]:
     logger.info(f"кандидаты: {candidates}")
 
     if not candidates:
-        logger.warning("не найдено организаций")
-        return []
+        logger.error("не найдено организаций")
+        raise CompanyNotFoundError()
 
     normalized = extract(summary_text).text
     roles = _assign_roles(normalized, candidates)
+
+    if all(r == _Role.UNKNOWN for r in roles.values()):
+        logger.error("не удалось определить роли организаций")
+        raise RoleAssignmentNotFoundError()
+
+    for org, role in roles.items():
+        logger.info(f"определённая роль: {org} -> {role.name}")
+        if role == _Role.UNKNOWN:
+            logger.error(f"Не удалось определить роль для организации '{org}'")
+            raise RoleAssignmentError(org=org)
 
     companies = [_parse_company(org, role) for org, role in roles.items()]
     sellers = [c for c in companies if c.role == "seller"]
