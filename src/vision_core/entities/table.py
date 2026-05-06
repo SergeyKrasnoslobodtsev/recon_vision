@@ -2,9 +2,10 @@ from functools import cached_property
 
 from pydantic import BaseModel, Field
 
+from vision_core.utils.markdown_utils import cell_text as _cell_text
+
 from .bbox import BBox
 from .cell import Cell
-from vision_core.utils.markdown_utils import cell_text as _cell_text
 
 
 class Table(BaseModel):
@@ -123,6 +124,7 @@ class Table(BaseModel):
     def get_dc_header_row(self) -> int:
         """Возвращает row-индекс строки с заголовками дебет/кредит, или -1."""
         from vision_core.postprocessor.dc_cols_resolver import is_dc_header
+
         for cell in self.cells:
             if cell.col in self.dc_cols and cell.value and is_dc_header(cell.value):
                 return cell.row
