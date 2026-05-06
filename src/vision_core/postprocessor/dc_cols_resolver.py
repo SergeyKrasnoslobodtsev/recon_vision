@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from http.client import INSUFFICIENT_STORAGE
+
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
 from vision_core.exceptions import DcColsInvalidPositionError, DcColsNotFoundError
