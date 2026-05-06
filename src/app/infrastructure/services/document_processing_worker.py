@@ -7,6 +7,7 @@ import asyncio
 from loguru import logger
 
 from app.application.ports.process_repository import ProcessRepository
+from app.infrastructure.config.settings import AppSettings
 from app.infrastructure.services.document_builder import VisionDocumentBuilder
 from app.infrastructure.services.structured_data_extractor import (
     ReconciliationActExtractor,
@@ -22,18 +23,18 @@ class InfrastructureDocumentProcessingWorker:
 
     Args:
         process_repository: Репозиторий состояний процессов.
-        document_builder: Сервис построения канонического документа.
-        structured_data_extractor: Сервис извлечения данных акта сверки.
+        settings: Конфигурация приложения.
+        structured_data_extractor: Сервис извлечения данных акта сверки (опционально).
     """
 
     def __init__(
         self,
         process_repository: ProcessRepository,
-        document_builder: VisionDocumentBuilder | None = None,
+        settings: AppSettings,
         structured_data_extractor: ReconciliationActExtractor | None = None,
     ) -> None:
         self.process_repository = process_repository
-        self.document_builder = document_builder or VisionDocumentBuilder()
+        self.settings = settings
         self.structured_data_extractor = structured_data_extractor or ReconciliationActExtractor()
         self._tasks: set[asyncio.Task[None]] = set()
 
@@ -67,7 +68,9 @@ class InfrastructureDocumentProcessingWorker:
             return
 
         try:
-            document_payload = await self.document_builder.build(process_state.source_pdf)
+            # Создаем builder для каждого процесса и уничтожаем по завершению
+            document_builder = VisionDocumentBuilder(self.settings)
+            document_payload = await document_builder.build(process_state.source_pdf)
             reconciliation_data = await self.structured_data_extractor.extract(document_payload)
             process_state.document_payload = document_payload
             process_state.mark_completed(
