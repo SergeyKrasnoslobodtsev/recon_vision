@@ -6,13 +6,14 @@ import re
 from dataclasses import dataclass
 from enum import Enum
 
-from extractor.exceptions import CompanyNotFoundError, RoleAssignmentError, RoleAssignmentNotFoundError
 from loguru import logger
 
 from extractor.process import extract
 from extractor.tokenize import OrganizationReference
 from vision_core.entities.document import Document
 from vision_core.entities.table import Table
+
+from .exceptions import CompanyNotFoundError, RoleAssignmentError, RoleAssignmentNotFoundError
 
 # ---------------------------------------------------------------------------
 # Сущность Company
