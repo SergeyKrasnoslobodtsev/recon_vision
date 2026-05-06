@@ -11,6 +11,7 @@ from paddleocr import DocImgOrientationClassification
 
 from vision_core.config import PageOrientationPreprocessorConfig
 from vision_core.entities.bbox import BBox
+from vision_core.exceptions import ModelLoadError
 from vision_core.utils import geometry_utils, image_utils
 
 
@@ -20,12 +21,17 @@ class PageOrientationPreprocessor:
     def __init__(self, config: PageOrientationPreprocessorConfig | None = None, debug_image=None) -> None:
         self.cfg = config or PageOrientationPreprocessorConfig()
         self._debug = debug_image
+
         if not Path(self.cfg.model_dir).exists():
             raise FileNotFoundError(f"Директория модели ориентации документа не найдена: {self.cfg.model_dir}")
-        self.model = DocImgOrientationClassification(
-            model_name=self.cfg.model_name,
-            model_dir=self.cfg.model_dir,
-        )
+
+        try:
+            self.model = DocImgOrientationClassification(
+                model_name=self.cfg.model_name,
+                model_dir=self.cfg.model_dir,
+            )
+        except Exception as e:
+            raise ModelLoadError(details=str(e)) from e
 
     def process(self, image: np.ndarray, *, page_number: int = 0) -> tuple[np.ndarray, dict[str, float]]:
         """Выравнивает страницу по ориентации и наклону."""
@@ -110,19 +116,19 @@ class PageOrientationPreprocessor:
         w = np.array(weights, dtype=np.float32)
 
         angle = _weighted_median(a, w)
-        logger.debug(f"Углы наклона: {angles}, веса: {weights}, итоговый угол: {angle:.4f}°")
+        logger.debug(f"Углы наклона страницы: {angle:.4f}°")
         return angle
 
     def _preprocess_image(self, image: np.ndarray) -> np.ndarray:
         """Применяет предобработку к изображению перед классификацией ориентации."""
-        gamma_corrected = image_utils.gamma_correction(image)
-        binary = image_utils.binary_threshold(gamma_corrected, block_size=11, C=5)
+        gamma_corrected = image_utils.gamma_correction(image, gamma=self.cfg.gamma)
+        binary = image_utils.binary_threshold(gamma_corrected, block_size=self.cfg.block_size, C=self.cfg.C)
         return binary
 
     def _detected_raw_tables(self, image: np.ndarray) -> list[BBox]:
         """Извлекает bounding boxes таблиц из изображения."""
-        h_line_mask = image_utils.compute_horizontal_line_mask(image, scale=40)
-        v_line_mask = image_utils.compute_vertical_line_mask(image, median_height=40)
+        h_line_mask = image_utils.compute_horizontal_line_mask(image, scale=self.cfg.scale_horizontal_line)
+        v_line_mask = image_utils.compute_vertical_line_mask(image, median_height=self.cfg.height_vertical_line)
         table_mask = image_utils.get_mask(h_line_mask, v_line_mask)
         return _extract_raw_tables(table_mask)
 
