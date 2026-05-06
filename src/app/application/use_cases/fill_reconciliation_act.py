@@ -136,6 +136,7 @@ class FillReconciliationActUseCase:
                         id_table=row_reference.id_table,
                         id_row=row_reference.id_row,
                         id_col=stored_entry.row_reference.id_col,
+                        buyer_col=stored_entry.row_reference.buyer_col,
                     ),
                 )
             )
