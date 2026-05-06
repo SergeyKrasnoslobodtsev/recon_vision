@@ -11,6 +11,12 @@ from vision_core.detector.paragraph_detector import ParagraphDetector
 from vision_core.detector.table_detector import TableDetector
 from vision_core.entities.document import Document
 from vision_core.entities.page import Page
+from vision_core.exceptions import (
+    OcrEmptyResultError,
+    ParagraphNotFoundError,
+    RecognitionQualityError,
+    TableNotFoundError,
+)
 from vision_core.loader.pdf_loader import PDFLoader
 from vision_core.ocr.base import OcrResult
 from vision_core.ocr.paddle_ocr import PaddleOcrEngine
@@ -47,7 +53,8 @@ class DocumentBuildPipeline:
 
         self.image_preprocessor = ImagePreprocessor(cfg.image_preprocessor, debug_image=debug_image)
         self.orientation_preprocessor = PageOrientationPreprocessor(
-            cfg.page_orientation_preprocessor, debug_image=debug_image
+            cfg.page_orientation_preprocessor,
+            debug_image=debug_image,
         )
         self.table_detector = TableDetector(
             preprocessor_config=cfg.table_preprocessor,
@@ -69,6 +76,7 @@ class DocumentBuildPipeline:
         self.debit_credit_processor = DebitCreditProcessor()
         self.table_id_assigner = TableIdAssigner()
         self.dpi = cfg.dpi
+        self.ocr_confidence_threshold = cfg.ocr_confidence_threshold
 
     def build(self, pdf_bytes: bytes) -> Document:
         """Строит канонический документ из PDF.
@@ -78,6 +86,17 @@ class DocumentBuildPipeline:
 
         Returns:
             Каноническое представление документа.
+        Raises:
+            PdfLoadError: Если PDF-файл не найден или не может быть прочитан.
+            FileNotFoundError: Не найдены необходимые модели для обработки документа.
+            DocumentParseError: Если произошла ошибка при разборе структуры документа.
+            RecognitionQualityError: Если качество распознавания OCR ниже допустимого порога.
+            OcrEmptyResultError: Если OCR не вернул результатов для всех страниц.
+            TableNotFoundError: Если в документе не найдено ни одной таблицы.
+            ParagraphNotFoundError: Если в документе не найдено ни одного абзаца.
+            OcrError: Если произошла ошибка OCR-движка.
+            DcColsNotFoundError: Если не найдены колонки дебет/кредит в таблице.
+            DcColsInvalidPositionError: Если нарушено расположение колонок дебет/кредит
         """
         pages: list[Page] = []
         aligned_images: list[np.ndarray] = []
@@ -113,6 +132,31 @@ class DocumentBuildPipeline:
         self.dc_cols_resolver.resolve(pages)
         self.row_splitter.split(pages)
         self.debit_credit_processor.process(pages)
+
+        mean_confidence = np.mean(
+            [page.metadata.get("ocr_mean_confidence", 0) for page in pages if "ocr_mean_confidence" in page.metadata]
+        )
+
+        if mean_confidence < self.ocr_confidence_threshold:
+            logger.error(f"Качество распознавания OCR низкое: средняя уверенность {mean_confidence:.2f}")
+            raise RecognitionQualityError(mean_confidence=mean_confidence)
+
+        logger.info(f"Средняя уверенность OCR по документу: {mean_confidence:.2f}")
+
+        total_tables = sum(len(page.tables) for page in pages)
+        total_paragraphs = sum(len(page.paragraphs) for page in pages)
+
+        if total_tables == 0 and total_paragraphs == 0:
+            logger.error("В документе не найдено ни одной таблицы и ни одного абзаца.")
+            raise OcrEmptyResultError()
+
+        if total_tables == 0:
+            logger.error("В документе не найдено ни одной таблицы.")
+            raise TableNotFoundError()
+
+        if total_paragraphs == 0:
+            logger.error("В документе не найдено ни одного абзаца.")
+            raise ParagraphNotFoundError()
 
         if self._debug_image:
             table_color_map = self._build_table_color_map(pages)
@@ -156,7 +200,7 @@ class DocumentBuildPipeline:
         logger.info("Детекция таблиц и ячеек завершена.")
 
         logger.info("Распознавание текста OCR...")
-        ocr_results = self._run_ocr(image_ocr)
+        ocr_results, mean_confidence = self._run_ocr(image_ocr)
         logger.info("Распознавание текста OCR завершено.")
 
         logger.info("Заполнение ячеек текстом...")
@@ -176,29 +220,28 @@ class DocumentBuildPipeline:
             metadata={
                 "source_image_shape": list(image.shape[:2]),
                 "image_shape": list(aligned_image.shape[:2]),
+                "ocr_mean_confidence": mean_confidence,
                 **alignment_metadata,
             },
         )
         return page, aligned_image
 
-    def _run_ocr(self, image: np.ndarray) -> list[OcrResult]:
+    def _run_ocr(self, image: np.ndarray) -> tuple[list[OcrResult], float]:
         """Запускает OCR на предобработанном изображении.
 
         Args:
             image: Предобработанное изображение страницы (grayscale).
 
         Returns:
-            Список OCR-результатов.
+            Список OCR-результатов и средняя уверенность.
         """
         results = self.ocr_engine.predict(image)
         if not results or not results[0]:
             logger.warning("OCR не распознал текст на странице.")
-            return []
-        logger.debug(
-            f"OCR: распознано {len(results[0])} блоков, "
-            f"средняя уверенность: {np.mean([r.confidence for r in results[0]]):.2f}"
-        )
-        return results[0]
+            return [], 0.0
+        mean_confidence = np.mean([r.confidence for r in results[0]])
+        logger.debug(f"OCR: распознано {len(results[0])} блоков, средняя уверенность: {mean_confidence:.2f}")
+        return results[0], mean_confidence
 
     @staticmethod
     def _build_table_color_map(
