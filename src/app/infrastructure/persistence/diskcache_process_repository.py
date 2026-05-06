@@ -89,7 +89,7 @@ class DiskCacheProcessRepository:
     async def cleanup_expired_cache(self) -> None:
         """Периодически очищает истёкшие записи из кэша."""
         while True:
-            await asyncio.sleep(3600)
+            await asyncio.sleep(self.expire)
             logger.info("Очистка устаревших записей кэша...")
             self.cache.expire()
             logger.debug(f"Очистка завершена. Размер кэша: {len(self.cache)}")
