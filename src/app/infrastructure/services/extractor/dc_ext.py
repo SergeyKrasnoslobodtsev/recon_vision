@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, replace
 
 from loguru import logger
@@ -31,6 +32,27 @@ def _find_dc_pairs(table: Table) -> list[_DcPair]:
     return [_DcPair(debit_col=sorted_cols[i], credit_col=sorted_cols[i + 1]) for i in range(0, len(sorted_cols) - 1, 2)]
 
 
+def _fuzzy_contains(pattern: str, text: str, min_ratio: float = 0.8) -> bool:
+    if not pattern:
+        return False
+    if pattern in text:
+        return True
+    # только буквы, без пробелов и цифр
+    norm_pat = re.sub(r"[^А-ЯA-Z]", "", pattern.upper())
+    norm_txt = re.sub(r"[^А-ЯA-Z]", "", text.upper())
+    if not norm_pat:
+        return False
+    matched = 0
+    j = 0
+    for ch in norm_pat:
+        while j < len(norm_txt) and norm_txt[j] != ch:
+            j += 1
+        if j < len(norm_txt):
+            matched += 1
+            j += 1
+    return matched / len(norm_pat) >= min_ratio
+
+
 def _detect_role(text: str, companies: list[Company]) -> str | None:
     normalized = extract(text).text
     if any(kw in normalized for kw in _SELLER_KEYWORDS):
@@ -38,7 +60,7 @@ def _detect_role(text: str, companies: list[Company]) -> str | None:
     if any(kw in normalized for kw in _BUYER_KEYWORDS):
         return "buyer"
     for c in companies:
-        if c.name in normalized:
+        if _fuzzy_contains(c.name, normalized):
             return c.role
     return None
 
