@@ -56,6 +56,25 @@ def complete_grid_axes(
     return np.unique(np.sort(axes.astype(np.int32, copy=False)))
 
 
+def filter_lines_without_intersections(
+    h_lines: list[tuple[int, SegmentsArray]],
+    v_lines: list[tuple[int, SegmentsArray]],
+    tol: int = 5,
+) -> tuple[list[tuple[int, SegmentsArray]], list[tuple[int, SegmentsArray]]]:
+    """Убирает линии без пересечений с перпендикулярными."""
+
+    def _covered(value: int, segments: SegmentsArray) -> bool:
+        return any(int(s[0]) - tol <= value <= int(s[1]) + tol for s in segments)
+
+    def _has_intersection(axis_val: int, segs: SegmentsArray, others: list[tuple[int, SegmentsArray]]) -> bool:
+        # h_line: axis_val=y, segs=x-сегменты; v_line: axis_val=x, segs=y-сегменты
+        return any(_covered(other_axis, segs) and _covered(axis_val, other_segs) for other_axis, other_segs in others)
+
+    filtered_h = [line for line in h_lines if _has_intersection(line[0], line[1], v_lines)]
+    filtered_v = [line for line in v_lines if _has_intersection(line[0], line[1], h_lines)]
+    return filtered_h, filtered_v
+
+
 def extract_lines(
     lines: Int32Array | None,
     axis: LineAxis,
