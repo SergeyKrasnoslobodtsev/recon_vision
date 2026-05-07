@@ -137,6 +137,8 @@ class TableDetector:
                 continue
 
             logger.debug(f"Вертикальных линий в таблице {idx}: {len(v_lines)}")
+            h_lines, v_lines = table_helper.filter_lines_without_intersections(h_lines, v_lines, tol=1)
+            logger.debug(f"После фильтрации пересечений: h={len(h_lines)}, v={len(v_lines)}")
             median_width = geometry_utils.median_axis_step(
                 np.array([axis for axis, _ in v_lines], dtype=np.int32),
                 default=0,
