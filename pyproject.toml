@@ -17,12 +17,8 @@ dependencies = [
     "pymupdf>=1.26.5",
     "pillow>=11.3.0",
     "setuptools>=80.9.0",
-    "deskew>=1.5.1",
     "paddleocr==3.3.2",
-    "super-image>=0.2.0",
-    "scikit-learn>=1.6.1",
-    "matplotlib>=3.9.4",
-    "llama-cpp-python>=0.3.20",
+    # "super-image>=0.2.0",    
 ]
 
 [project.optional-dependencies]
@@ -31,7 +27,7 @@ dev = [
     "pytest-asyncio>=0.20.3",
     "pytest-cov>=4.1.0",
     "ruff>=0.15.8",
-
+    "matplotlib>=3.9.4",
 ]
 aws = [
     "mangum>=0.17.0"
