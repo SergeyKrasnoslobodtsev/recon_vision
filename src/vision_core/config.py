@@ -205,14 +205,14 @@ class VisionCoreConfig:
     paragraph_preprocessor: ParagraphPreprocessorConfig = field(default_factory=ParagraphPreprocessorConfig)
     paragraph_detector: ParagraphDetectorConfig = field(default_factory=ParagraphDetectorConfig)
     dpi: int = 200
-    ocr_confidence_threshold: float = 0.5
+    ocr_confidence_threshold: float = 0.45
 
     @classmethod
     def from_dict(cls, config_dict: dict) -> "VisionCoreConfig":
         """Создание из словаря (для загрузки из JSON/YAML)"""
         return cls(
-            dpi=config_dict.get("dpi", 300),
-            ocr_confidence_threshold=config_dict.get("ocr_confidence_threshold", 0.5),
+            dpi=config_dict.get("dpi", 200),
+            ocr_confidence_threshold=config_dict.get("ocr_confidence_threshold", 0.45),
             image_preprocessor=ImagePreprocessorConfig(**config_dict.get("image_preprocessor", {})),
             table_detector=TableDetectorConfig(**config_dict.get("table_detector", {})),
             table_preprocessor=TablePreprocessorConfig(**config_dict.get("table_preprocessor", {})),

@@ -1,8 +1,8 @@
 dpi: 200
-ocr_confidence_threshold: 0.5
+ocr_confidence_threshold: 0.45
 
 image_preprocessor:
-  kernel: 5
+  kernel: 3
   sigma: 1.5
   amount: 1.0
 
@@ -38,7 +38,7 @@ paddleocr:
   use_doc_orientation_classify: false
   use_doc_unwarping: false
   use_textline_orientation: false
-  device: gpu
+  device: cpu
 
 page_orientation_preprocessor:
   model_name: PP-LCNet_x1_0_doc_ori
