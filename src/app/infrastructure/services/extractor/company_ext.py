@@ -238,8 +238,9 @@ def extract_companies(document: Document) -> list[Company]:
     if len(orgs_from_cells) >= 2:
         candidates = orgs_from_cells
     elif orgs_from_cells:
-        names_set = {_org_token(o) for o in orgs_from_cells}
-        candidates = [o for o in orgs_from_text if any(n in o for n in names_set)]
+        candidates = orgs_from_cells + [
+            o for o in orgs_from_text if _org_token(o) not in {_org_token(c) for c in orgs_from_cells}
+        ]
     else:
         candidates = orgs_from_text
 
