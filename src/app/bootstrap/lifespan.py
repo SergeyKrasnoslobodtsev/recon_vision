@@ -28,7 +28,9 @@ def create_lifespan(settings: AppSettings) -> Callable[[FastAPI], AsyncIterator[
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        repository = DiskCacheProcessRepository(expire=settings.ttl_cache_in_hours, cache_dir=settings.database_dir)
+        repository = DiskCacheProcessRepository(
+            expire=settings.ttl_cache_in_hours * 3600, cache_dir=settings.database_dir
+        )
         cleanup_task = asyncio.create_task(repository.cleanup_expired_cache())
         container = create_container(repository, settings)
         app.state.process_repository = repository
