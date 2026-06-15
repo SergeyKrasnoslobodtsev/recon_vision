@@ -173,6 +173,22 @@ class TestOrganizations:
         for ref in result:
             assert text[ref.token.start : ref.token.end] == ref.token.text
 
+    @pytest.mark.parametrize(
+        "text, expected_name",
+        [
+            ("мы нижеподписавшиея, ИП ВАЛЬКОВ АЛЕКСЕЙ АЛЕКСАНДРОВИЧ с одной стороны", "ВАЛЬКОВ АЛЕКСЕЙ АЛЕКСАНДРОВИЧ"),
+            ("мы нижеподписавшиея, ИП А. А. ВАЛЬКОВ с одной стороны", "А. А. ВАЛЬКОВ"),
+            ("мы нижеподписавшиея, ИП А.А. ВАЛЬКОВ с одной стороны", "А.А. ВАЛЬКОВ"),
+            ("мы нижеподписавшиея, ИП ВАЛЬКОВ А. А. с одной стороны", "ВАЛЬКОВ А. А."),
+            ("мы нижеподписавшиея, ИП ВАЛЬКОВ А.А. с одной стороны", "ВАЛЬКОВ А.А."),
+        ],
+    )
+    def test_ip_fio(self, text, expected_name):
+        result = orgs(tokenize(text))
+        assert len(result) == 1
+        assert result[0].org_form == "ИП"
+        assert result[0].name == expected_name
+
 
 # ---------------------------------------------------------------------------
 # Currencies

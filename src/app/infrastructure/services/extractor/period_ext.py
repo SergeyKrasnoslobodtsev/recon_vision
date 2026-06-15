@@ -64,7 +64,6 @@ def extract_period(document: Document) -> Period:
 
     para_text = _collect_paragraph_text(document)
     period = _try_extract(para_text)
-    logger.debug(f"период (абзацы): {period.start} - {period.end}")
     if period and period.start:
         logger.info(f"период (абзацы): {period.start} - {period.end}")
         return period
