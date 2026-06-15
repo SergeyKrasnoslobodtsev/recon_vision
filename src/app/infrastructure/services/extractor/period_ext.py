@@ -6,18 +6,11 @@ from loguru import logger
 
 from app.domain.value_objects.period import Period
 from extractor.process import extract
-from extractor.tokenize import CurrencyReference, DateReference
+from extractor.tokenize import DateReference
 from vision_core.entities.document import Document
 
-
-def _has_dc_value(cells_by_col: dict, dc_cols: set) -> bool:
-    for col in dc_cols:
-        cell = cells_by_col.get(col)
-        if cell and cell.value:
-            tokens = extract(cell.value).tokens
-            if any(isinstance(t, CurrencyReference) and t.value > 0 for t in tokens):
-                return True
-    return False
+_KEYWORDS = {"САЛЬДО", "ПЕРИОД"}
+_KEYWORD_WINDOW = 30
 
 
 def _collect_table_text(document: Document) -> str:
@@ -32,8 +25,6 @@ def _collect_table_text(document: Document) -> str:
                 if row_idx <= header_row:
                     continue
                 cells_by_col = {cell.col: cell for cell in row}
-                if not _has_dc_value(cells_by_col, table.dc_cols):
-                    continue
                 for col, cell in cells_by_col.items():
                     if col < left_bound and cell.value and cell.value.strip():
                         parts.append(cell.value)
@@ -45,7 +36,13 @@ def _collect_paragraph_text(document: Document) -> str:
 
 
 def _try_extract(text: str) -> Period | None:
-    dates = [t for t in extract(text).tokens if isinstance(t, DateReference)]
+    upper = text.upper()
+    dates = [
+        t
+        for t in extract(text).tokens
+        if isinstance(t, DateReference)
+        and any(kw in upper[max(0, t.token.start - _KEYWORD_WINDOW) : t.token.start] for kw in _KEYWORDS)
+    ]
     if not dates:
         return None
     for d in dates:
@@ -62,14 +59,15 @@ def extract_period(document: Document) -> Period:
     table_text = _collect_table_text(document)
     period = _try_extract(table_text)
     if period and period.start:
-        logger.debug(f"период (таблица): {period.start} - {period.end}")
+        logger.info(f"период (таблица): {period.start} - {period.end}")
         return period
 
     para_text = _collect_paragraph_text(document)
     period = _try_extract(para_text)
+    logger.debug(f"период (абзацы): {period.start} - {period.end}")
     if period and period.start:
-        logger.debug(f"период (абзацы): {period.start} - {period.end}")
+        logger.info(f"период (абзацы): {period.start} - {period.end}")
         return period
 
-    logger.debug("период не определён")
+    logger.warning("период не определён")
     return Period()
