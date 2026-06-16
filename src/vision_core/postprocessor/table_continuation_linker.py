@@ -31,6 +31,8 @@ class TableContinuationLinker:
             pages: Страницы документа в порядке следования.
         """
         for i in range(len(pages) - 1):
+            self._link_tables_within_page(pages[i])
+
             prev_table = self._bottom_table(pages[i])
             next_table = self._top_table(pages[i + 1])
 
@@ -42,9 +44,44 @@ class TableContinuationLinker:
 
             if prev_table and next_table and self._is_continuation(next_table, pages[i + 1]):
                 next_table.continuation_of = prev_table.id
-                logger.debug(f"  Связано: {next_table.id} -> continuation_of={prev_table.id}")
+                logger.debug(f"Связано: {next_table.id} -> continuation_of={prev_table.id}")
             else:
-                logger.debug("  Не связано")
+                logger.warning(f" Таблица {next_table.id if next_table else None} не связана с предыдущей страницей")
+
+    def _link_tables_within_page(self, page: Page) -> None:
+        """Связывает таблицы, разбитые внутри одной страницы."""
+        if len(page.tables) < 2:
+            return
+
+        # Отсортировать таблицы по y_min (вертикальный порядок)
+        sorted_tables = sorted(page.tables, key=lambda t: t.bbox.y_min)
+
+        # Проверить соседние пары
+        for i in range(len(sorted_tables) - 1):
+            table1 = sorted_tables[i]
+            table2 = sorted_tables[i + 1]
+
+            if self._is_same_page_continuation(table1, table2):
+                table2.continuation_of = table1.id
+                logger.debug(f"Связано (внутристраничное): {table2.id} -> {table1.id}")
+
+    def _is_same_page_continuation(self, table1: Table, table2: Table) -> bool:
+        """Проверяет, является ли table2 продолжением table1 на одной странице."""
+        # Условие 1: количество столбцов совпадает
+        if table1.num_cols != table2.num_cols:
+            logger.debug(f"  Не продолжение: столбцы {table1.num_cols} != {table2.num_cols}")
+            return False
+
+        # Условие 2: расстояние < медиана высоты строк table1
+        gap = table2.bbox.y_min - table1.bbox.y_max
+        median_height = table1.median_height_blobs_per_cells()
+
+        if gap < 0 or gap > median_height:
+            logger.debug(f"  Не продолжение: gap={gap:.1f} > median_height={median_height:.1f}")
+            return False
+
+        logger.debug(f"  Продолжение: gap={gap:.1f} <= median_height={median_height:.1f}")
+        return True
 
     def _bottom_table(self, page: Page) -> Table | None:
         """Возвращает таблицу с наибольшим y_max на странице."""
@@ -73,19 +110,12 @@ class TableContinuationLinker:
             )
             return False
 
-        blocking = [
-            p for p in page.paragraphs
-            if p.type == ParagraphType.BODY_TEXT and p.bbox.y_min < table.bbox.y_min
-        ]
+        blocking = [p for p in page.paragraphs if p.type == ParagraphType.BODY_TEXT and p.bbox.y_min < table.bbox.y_min]
         if blocking:
-            logger.debug(
-                f"  _is_continuation {table.id}: {len(blocking)} BODY_TEXT параграфов выше таблицы, отклонено"
-            )
+            logger.debug(f"  _is_continuation {table.id}: {len(blocking)} BODY_TEXT параграфов выше таблицы, отклонено")
             return False
 
-        logger.debug(
-            f"  _is_continuation {table.id}: y_min/h={y_ratio:.3f}, параграфов выше нет — продолжение"
-        )
+        logger.debug(f"  _is_continuation {table.id}: y_min/h={y_ratio:.3f}, параграфов выше нет — продолжение")
         return True
 
     def _page_height(self, page: Page) -> int:

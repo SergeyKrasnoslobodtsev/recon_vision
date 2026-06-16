@@ -63,6 +63,12 @@ class DcColsInvalidPositionError(DocumentParseError):
     )
 
 
+class DcColsResolutionError(DocumentParseError):
+    """Ошибка при разрешении колонок дебет/кредит для таблицы-продолжения."""
+
+    message = "Ошибка разрешения колонок дебет/кредит для таблицы '{table_id}': {details}"
+
+
 class TableNotFoundError(DocumentParseError):
     """Ошибка разбора структуры таблицы."""
 

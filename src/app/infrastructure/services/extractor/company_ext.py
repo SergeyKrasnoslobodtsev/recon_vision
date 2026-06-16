@@ -88,7 +88,8 @@ def _build_summary_cell_texts(document: Document) -> list[str]:
                         continue
                     seen.add(id(cell))
                     if cell.value and cell.value.strip():
-                        result.append(cell.value.strip())
+                        normalized = re.sub(r"\s+", " ", cell.value.strip())
+                        result.append(normalized)
     logger.debug(f"summary_cell_texts: {result}")
     return result
 

@@ -22,7 +22,7 @@ from vision_core.ocr.base import OcrResult
 from vision_core.ocr.paddle_ocr import PaddleOcrEngine
 from vision_core.postprocessor.cell_text_filler import CellTextFiller
 from vision_core.postprocessor.dc_cols_resolver import DcColsResolver
-from vision_core.postprocessor.debit_credit_processor import DebitCreditProcessor
+from vision_core.postprocessor.logical_table_builder import ColumnType, LogicalTable, LogicalTableBuilder
 from vision_core.postprocessor.row_splitter import RowSplitter
 from vision_core.postprocessor.table_continuation_linker import TableContinuationLinker
 from vision_core.postprocessor.table_id_assigner import TableIdAssigner
@@ -73,8 +73,8 @@ class DocumentBuildPipeline:
         self.continuation_linker = TableContinuationLinker()
         self.dc_cols_resolver = DcColsResolver()
         self.row_splitter = RowSplitter()
-        self.debit_credit_processor = DebitCreditProcessor()
         self.table_id_assigner = TableIdAssigner()
+        self.logical_table_builder = LogicalTableBuilder()
         self.dpi = cfg.dpi
         self.ocr_confidence_threshold = cfg.ocr_confidence_threshold
 
@@ -131,7 +131,8 @@ class DocumentBuildPipeline:
         self.continuation_linker.link(pages)
         self.dc_cols_resolver.resolve(pages)
         self.row_splitter.split(pages)
-        self.debit_credit_processor.process(pages)
+        # self.debit_credit_processor.process(pages)
+        # self.logical_table_builder.build(pages)
 
         mean_confidence = np.mean(
             [page.metadata.get("ocr_mean_confidence", 0) for page in pages if "ocr_mean_confidence" in page.metadata]
@@ -195,7 +196,7 @@ class DocumentBuildPipeline:
         logger.info("Предобработка завершена.")
 
         logger.info("Детекция таблиц и ячеек...")
-        tables = self.table_detector.detect_tables(aligned_image)
+        tables = self.table_detector.detect_tables(aligned_image, page_number=page_number)
         logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
         logger.info("Детекция таблиц и ячеек завершена.")
 
@@ -276,3 +277,7 @@ class DocumentBuildPipeline:
         palette = Drawer._CYCLIC_PALETTE
         root_colors = {root: palette[i % len(palette)] for i, root in enumerate(roots)}
         return {tid: root_colors[find_root(tid)] for tid in all_tables}
+
+    def dc_cols(table: LogicalTable) -> set[int]:
+        """Индексы колонок дебета/кредита логической таблицы (контракт для модуля 2)."""
+        return {c.index for c in table.cols if c.type in (ColumnType.DEBIT, ColumnType.CREDIT)}

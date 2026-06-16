@@ -290,25 +290,6 @@ def _find_orgs(text: str) -> list[OrganizationReference]:
 
 
 # ---------------------------------------------------------------------------
-# Digital value recognition
-# ---------------------------------------------------------------------------
-
-_RE_DIGITAL = re.compile(r"(?<!\S)\d+(?!\S)")
-
-
-def _find_digitals(text: str) -> list[DigitalReference]:
-    refs: list[DigitalReference] = []
-    for m in _RE_DIGITAL.finditer(text):
-        refs.append(
-            DigitalReference(
-                token=Token(m.start(), m.end(), m.group()),
-                value=m.group(),
-            )
-        )
-    return refs
-
-
-# ---------------------------------------------------------------------------
 # Currency recognition
 # ---------------------------------------------------------------------------
 

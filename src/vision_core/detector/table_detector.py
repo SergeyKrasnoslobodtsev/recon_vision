@@ -32,28 +32,30 @@ class TableDetector:
         self.preprocessor = TablePreprocessor(preprocessor_config, debug_image)
         self._debug_image = debug_image
 
-    def _preprocess(self, image: np.ndarray) -> np.ndarray:
+    def _preprocess(self, image: np.ndarray, page_number: int = 0) -> np.ndarray:
         """Создаёт маску таблиц для текущего изображения.
 
         Args:
             image: Изображение страницы.
+            page_number: Номер страницы.
 
         Returns:
             mask (np.ndarray): Бинарная маска таблиц.
         """
-        binary_image = self.preprocessor.process(image)
+        binary_image = self.preprocessor.process(image, page_number=page_number)
 
         return binary_image
 
-    def detect_tables(self, image: np.ndarray) -> list[Table]:
+    def detect_tables(self, image: np.ndarray, page_number: int = 0) -> list[Table]:
         """Детектирует таблицы на изображении и извлекает их ячейки.
         Args:
             image: Изображение страницы.
+            page_number: Номер страницы.
         Returns:
             list[Table]: Список найденных таблиц с их ячейками.
         """
         # Создаем маску таблицы локально для текущего изображения.
-        binary_image = self._preprocess(image)
+        binary_image = self._preprocess(image, page_number=page_number)
         h_line_mask = image_utils.compute_horizontal_line_mask(binary_image, scale=self.cfg.scale_horizontal_line)
         v_line_mask = image_utils.compute_vertical_line_mask(binary_image, median_height=self.cfg.height_vertical_line)
         table_mask = image_utils.get_mask(h_line_mask, v_line_mask)
@@ -63,7 +65,7 @@ class TableDetector:
                 src_image=table_mask,
                 stage="4_table_preprocessor",
                 prefix="mask",
-                page_number=0,
+                page_number=page_number,
             )
 
         # Извлекаем bounding boxes таблиц
@@ -81,11 +83,12 @@ class TableDetector:
                 boxes=[bbox.to_tuple() for bbox in table_bboxes],
                 stage="4_table_preprocessor",
                 prefix="candidates",
-                page_number=0,
+                page_number=page_number,
             )
+
         tables: list[Table] = []
 
-        for idx, bbox in enumerate(table_bboxes):
+        for idx, bbox in enumerate(sorted(table_bboxes, key=lambda b: (b.y_min, b.x_min))):
             # Детектируем ячейки внутри таблицы
             roi_mask = bbox.roi(binary_image)
             h_raw_lines = table_helper.extract_raw_horizontal_lines(
@@ -122,7 +125,7 @@ class TableDetector:
                 roi_mask,
                 median_height=max(1, median_height),
                 min_line_length=max(1, median_height),
-                max_line_gap=max(1, int(median_height * 0.1)),
+                max_line_gap=max(1, int(median_height * 0.8)),
             )
 
             v_lines = table_helper.extract_lines(

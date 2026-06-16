@@ -55,7 +55,6 @@ class CellTextFiller:
 
         for table in tables:
             logger.debug(f"Заполнение ячеек для таблицы {table.id} с {len(table.cells)} ячейками...")
-            logger.debug("=" * 40)
 
             cell_texts: dict[int, list[str]] = {id(c): [] for c in table.cells}
             cell_blobs: dict[int, list[BBox]] = {id(c): [] for c in table.cells}
@@ -70,14 +69,14 @@ class CellTextFiller:
 
                 best_cell = None
                 best_ratio = self.min_overlap_ratio
-                best_inter = 0.0
+                # best_inter = 0.0
 
                 for cell in table.cells:
                     inter = ocr_bbox.intersect(cell.bbox)
                     ratio = inter / ocr_area
                     if ratio > best_ratio:
                         best_ratio = ratio
-                        best_inter = inter
+                        # best_inter = inter
                         best_cell = cell
 
                 if best_cell is None:
@@ -85,13 +84,13 @@ class CellTextFiller:
 
                 cell_texts[id(best_cell)].append(ocr_item.text)
                 cell_blobs[id(best_cell)].append(ocr_bbox)
-                logger.debug(
-                    f"OCR '{ocr_item.text[:25]}' "
-                    f"bbox={ocr_bbox.to_tuple()} w={ocr_bbox.width:.0f} "
-                    f"-> R{best_cell.row}:C{best_cell.col} "
-                    f"cell_bbox={best_cell.bbox.to_tuple()} cell_w={best_cell.bbox.width:.0f} "
-                    f"inter={best_inter:.0f} ratio={best_ratio:.2f}"
-                )
+                # logger.debug(
+                #     f"OCR '{ocr_item.text[:25]}' "
+                #     f"bbox={ocr_bbox.to_tuple()} w={ocr_bbox.width:.0f} "
+                #     f"-> R{best_cell.row}:C{best_cell.col} "
+                #     f"cell_bbox={best_cell.bbox.to_tuple()} cell_w={best_cell.bbox.width:.0f} "
+                #     f"inter={best_inter:.0f} ratio={best_ratio:.2f}"
+                # )
 
             for cell in table.cells:
                 cell.value = "\n".join(cell_texts[id(cell)])

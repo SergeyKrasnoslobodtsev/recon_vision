@@ -6,14 +6,14 @@ from extractor.tokenize import AnyReference, tokenize
 
 @dataclass
 class Result:
-    """Нормализованный текст и извлечённые токены."""
+    """Текст и извлечённые токены."""
 
     text: str
     tokens: list[AnyReference]
 
 
 def extract(text: str) -> Result:
-    """Нормализует текст и извлекает токены."""
-    normalized = transform_text(text)
-    tokens = tokenize(normalized)
-    return Result(normalized, tokens)
+    """извлекает токены."""
+    text = transform_text(text)
+    tokens = tokenize(text)
+    return Result(text, tokens)

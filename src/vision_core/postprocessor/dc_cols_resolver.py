@@ -1,8 +1,6 @@
-"""Определяет дебет/кредит колонки и записывает их в table.dc_cols."""
+"""Определяет дебет/кредит колонки"""
 
 from __future__ import annotations
-
-from http.client import INSUFFICIENT_STORAGE
 
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table

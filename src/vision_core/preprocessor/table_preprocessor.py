@@ -30,7 +30,7 @@ class TablePreprocessor:
         self.cfg = cfg
         self._debug_image = debug_image
 
-    def process(self, image: np.ndarray) -> np.ndarray:
+    def process(self, image: np.ndarray, page_number: int = 0) -> np.ndarray:
         """Создание маски таблицы из изображения"""
         gamma_img = gamma_correction(image, self.cfg.gamma)
         binary_image = binary_threshold(gamma_img, block_size=self.cfg.block_size, C=self.cfg.C)
@@ -40,7 +40,7 @@ class TablePreprocessor:
                 src_image=binary_image,
                 stage="4_table_preprocessor",
                 prefix="binary",
-                page_number=0,
+                page_number=page_number,
             )
 
         return binary_image

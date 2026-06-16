@@ -99,7 +99,7 @@ def sample_reconciliation_data() -> ReconciliationData:
 
 ### PDF fixtures
 
-_PDF_DIR = Path("./examples/test/full")
+_PDF_DIR = Path("./examples/test/bag_15062026")
 _pdf_files = sorted(_PDF_DIR.glob("*.pdf")) if _PDF_DIR.exists() else []
 
 
