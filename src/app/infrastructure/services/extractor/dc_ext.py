@@ -79,12 +79,15 @@ def _apply_symmetry(pairs: list[_DcPair]) -> None:
 
 def _assign_pair_roles(table: Table, pairs: list[_DcPair], companies: list[Company]) -> None:
     header_row = table.get_dc_header_row()
-    if header_row <= 0:
-        _apply_symmetry(pairs)
-        return
     rows = table.get_rows()
-    for row_idx in range(header_row):
-        for cell in rows[row_idx]:
+
+    if header_row > 0:
+        scan_rows = rows[:header_row]
+    else:
+        scan_rows = rows[:1]
+
+    for row in scan_rows:
+        for cell in row:
             if not cell.value:
                 continue
             role = _detect_role(cell.value, companies)
@@ -94,7 +97,27 @@ def _assign_pair_roles(table: Table, pairs: list[_DcPair], companies: list[Compa
             for pair in pairs:
                 if pair.role == "unknown" and (pair.debit_col in covered or pair.credit_col in covered):
                     pair.role = role
+
+    if all(pair.role == "unknown" for pair in pairs):
+        _assign_pair_roles_by_header_row(table, pairs, companies)
+
     _apply_symmetry(pairs)
+
+
+def _assign_pair_roles_by_header_row(table: Table, pairs: list[_DcPair], companies: list[Company]) -> None:
+    header_row = max(table.get_dc_header_row(), 0)
+    row = table.get_rows()[header_row]
+
+    for cell in row:
+        if not cell.value:
+            continue
+        role = _detect_role(cell.value, companies)
+        if role is None:
+            continue
+        covered = set(range(cell.col, cell.col + cell.colspan))
+        for pair in pairs:
+            if pair.role == "unknown" and (pair.debit_col in covered or pair.credit_col in covered):
+                pair.role = role
 
 
 def _parse_value(cell) -> float:
