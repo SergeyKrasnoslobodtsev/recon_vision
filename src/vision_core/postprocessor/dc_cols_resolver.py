@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from loguru import logger
+
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
 from vision_core.exceptions import DcColsInvalidPositionError, DcColsNotFoundError
@@ -31,20 +33,12 @@ class DcColsResolver:
     """
 
     def resolve(self, pages: list[Page]) -> None:
-        """Заполняет dc_cols in-place для всех таблиц.
-
-        Args:
-            pages: Страницы документа после continuation_linker.link().
-
-        Raises:
-            DcColsNotFoundError: Если в корневой таблице не найдены ни дебет, ни кредит.
-            DcColsInvalidPositionError: Если восстановленная по позиции колонка выходит за пределы таблицы.
-        """
-        all_tables: dict[str, Table] = {t.id: t for p in pages for t in p.tables}
+        all_tables = {t.id: t for p in pages for t in p.tables}
+        children = _build_continuation_children(all_tables)
 
         for table in all_tables.values():
             if table.continuation_of is None:
-                table.dc_cols = _detect_dc_cols(table)
+                table.dc_cols = _detect_root_dc_cols(table, children)
 
         for table in all_tables.values():
             if table.continuation_of is not None and not table.dc_cols:
@@ -86,6 +80,45 @@ def _detect_dc_cols(table: Table) -> set[int]:
             credit_cols.add(partner)
 
     return debit_cols | credit_cols
+
+
+def _build_continuation_children(all_tables: dict[str, Table]) -> dict[str, list[Table]]:
+    children: dict[str, list[Table]] = {}
+    for table in all_tables.values():
+        if table.continuation_of and table.continuation_of in all_tables:
+            children.setdefault(table.continuation_of, []).append(table)
+    return children
+
+
+def _detect_root_dc_cols(root: Table, children: dict[str, list[Table]]) -> set[int]:
+    try:
+        return _detect_dc_cols(root)
+    except DcColsNotFoundError:
+        logger.warning(f"Колонки Д/К не найдены в корневой таблице {root.id}, пытаемся найти в цепочке продолжений")
+        header_table = _find_dc_header_in_chain(root, children)
+        if header_table is None:
+            raise
+        return _detect_dc_cols(header_table)
+
+
+def _find_dc_header_in_chain(root: Table, children: dict[str, list[Table]]) -> Table | None:
+    visited: set[str] = {root.id}
+    stack = [root]
+
+    while stack:
+        table = stack.pop()
+        for child in children.get(table.id, []):
+            if child.id in visited:
+                continue
+            visited.add(child.id)
+
+            try:
+                _detect_dc_cols(child)
+                return child
+            except DcColsNotFoundError:
+                stack.append(child)
+
+    return None
 
 
 def _find_root(table: Table, all_tables: dict[str, Table]) -> Table:
