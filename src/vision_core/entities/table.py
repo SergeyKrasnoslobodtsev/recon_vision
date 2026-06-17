@@ -81,7 +81,14 @@ class Table(BaseModel):
 
     def get_cell(self, row: int, col: int):
         """Получить ячейку по номеру строки и столбца"""
-        return self._cell_index.get((row, col))
+        cell = self._cell_index.get((row, col))
+        if cell is not None:
+            return cell
+
+        for cell in self.cells:
+            if cell.row <= row < cell.row + cell.rowspan and cell.col <= col < cell.col + cell.colspan:
+                return cell
+        return None
 
     def get_rows(self, include_merged: bool = False) -> list[list[Cell]]:
         if not include_merged:
@@ -132,7 +139,7 @@ class Table(BaseModel):
 
     def is_valid(self) -> bool:
         """Проверяет, что таблица имеет больше одной ячейки и положительные размеры"""
-        return self.num_rows > 1 or (self.num_cols > 1 and len(self.cells) > 1)
+        return self.num_rows > 1 and self.num_cols > 4
 
     def validate_structure(self) -> bool:
         """Детальная проверка: соответствуют ли ячейки размерам таблицы"""

@@ -45,10 +45,10 @@ class PageOrientationPreprocessor:
 
         orientation_deg, orientation_score = self.classify(image)
         logger.debug(f"Ориентация страницы: {orientation_deg}° с точностью {orientation_score:.4f}")
-        metadata["orientation_deg"] = orientation_deg
-        metadata["orientation_score"] = orientation_score
 
         if orientation_score >= self.cfg.min_orientation_score:
+            metadata["orientation_deg"] = orientation_deg
+            metadata["orientation_score"] = orientation_score
             aligned_image = _rotate_by_orientation(image, orientation_deg)
 
         deskew_angle = self.compute_deskew_angle(aligned_image)
@@ -105,7 +105,7 @@ class PageOrientationPreprocessor:
         angles: list[float] = []
         weights: list[float] = []
         for bbox in raw_tables:
-            angle, length = _get_angles(bbox, binary_image)
+            angle, length = _get_angles(bbox, binary_image, scale=self.cfg.scale_horizontal_line)
             angles.append(angle)
             weights.append(length)
 
@@ -144,17 +144,13 @@ def _rotate_by_orientation(image: np.ndarray, orientation_deg: int) -> np.ndarra
     return image_utils.rotate_image(image, orientation_deg)
 
 
-def _get_angles(bbox: BBox, bin_img: np.ndarray) -> tuple[float, float]:
+def _get_angles(bbox: BBox, bin_img: np.ndarray, scale=20) -> tuple[float, float]:
     box_bin = bbox.roi(bin_img)
-    mask = image_utils.compute_horizontal_line_mask(box_bin, scale=10)
+    mask = image_utils.compute_horizontal_line_mask(box_bin, scale=scale)
 
     num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
 
     for lbl in range(1, num):
-        area = int(stats[lbl, cv2.CC_STAT_AREA])
-        if area < 30:
-            continue
-
         comp = (labels == lbl).astype(np.uint8) * 255
         cnts, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
         if not cnts:
@@ -162,15 +158,10 @@ def _get_angles(bbox: BBox, bin_img: np.ndarray) -> tuple[float, float]:
 
         cnt = max(cnts, key=cv2.contourArea)
         x, y, bw, bh = cv2.boundingRect(cnt)
-        if bw < 80 or bw < 6 * max(1, bh):
+        if bw < bbox.width * 0.6:
             continue
-
         vx, vy, x0, y0 = cv2.fitLine(cnt, cv2.DIST_L2, 0, 0.01, 0.01).reshape(-1)
         angle = _normalize_angle_deg(float(np.degrees(np.arctan2(vy, vx))))
-
-        # Убираем явные выбросы: для deskew таблиц угол обычно малый
-        if abs(angle) > 3.0:
-            continue
 
         x_pts = cnt[:, 0, 0]
         x1, x2 = int(x_pts.min()), int(x_pts.max())
@@ -185,11 +176,9 @@ def _get_angles(bbox: BBox, bin_img: np.ndarray) -> tuple[float, float]:
         if line_pts == 0:
             continue
 
-        support = np.count_nonzero((line_img > 0) & (mask > 0)) / line_pts
         length = float(np.hypot(x2 - x1, y2 - y1))
 
-        if support >= 0.9 and length >= 120:
-            return angle, length
+        return angle, length
     return 0.0, 0.0
 
 

@@ -106,6 +106,8 @@ class TestDates:
 
 
 class TestOrganizations:
+    # TODO: переписать тесты с использование parametrize и разными формами организации, чтобы проверить все варианты
+
     def test_ooo_with_form(self):
         result = orgs(tokenize('ООО "РОМАШКА"'))
         assert len(result) == 1

@@ -28,7 +28,7 @@ class PageOrientationPreprocessorConfig:
 
     model_name: str = "PP-LCNet_x1_0_doc_ori"
     model_dir: str = str(_DEFAULT_MODELS_DIR / "PP-LCNet_x1_0_doc_ori")
-    min_orientation_score: float = 0.6
+    min_orientation_score: float = 0.79
 
     gamma: float = 10.0
     block_size: int = 15

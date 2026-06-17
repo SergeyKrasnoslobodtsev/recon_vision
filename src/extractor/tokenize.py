@@ -163,11 +163,23 @@ def _find_dates(text: str) -> list[DateReference]:
 # ---------------------------------------------------------------------------
 
 # Аббревиатуры (длиннее идут первыми — порядок важен для regex alternation)
-_ORG_ABBR = ("ФГУП", "МУП", "ГУП", "ПАО", "ОАО", "ЗАО", "ООО", "АО", "НП")  # ИП убрали иначе матчится до кавычек
+_ORG_ABBR = (
+    "ФГУП",
+    "МУП",
+    "ГУП",
+    "ПАО",
+    "ОАО",
+    "ЗАО",
+    "ООО",
+    "АО",
+    "НП",
+    "ФГОБУ ВО",
+)  # ИП убрали иначе матчится до кавычек
 
 # Полные формы -> аббревиатура (сортируем по убыванию длины, чтобы длинные паттерны
 # проверялись раньше: ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО раньше чем АКЦИОНЕРНОЕ ОБЩЕСТВО)
 _ORG_FULL: dict[str, str] = {
+    "ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ ОБРАЗОВАТЕЛЬНОЕ БЮДЖЕТНОЕ УЧРЕЖДЕНИЕ ВЫСШЕГО ОБРАЗОВАНИЯ": "ФГОБУ ВО",
     "ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ": "ФГУП",
     "МУНИЦИПАЛЬНОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ": "МУП",
     "ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ": "ГУП",
@@ -196,28 +208,7 @@ _RE_IP_FIO = re.compile(
     r")"
 )
 
-# def _fuzzy_org_pattern(phrase: str) -> str:
-#     """Генерирует regex, допускающий OCR-ошибку в одном слове фразы.
 
-#     Для фраз из 1-2 слов — точное совпадение.
-#     Для 3+ слов — каждое слово поочерёдно может быть любым кириллическим словом.
-#     """
-#     words = phrase.split()
-#     if len(words) <= 2:
-#         return re.escape(phrase)
-#     variants = [
-#         r"\s+".join(r"[А-ЯЁ]+" if j == i else re.escape(w) for j, w in enumerate(words)) for i in range(len(words))
-#     ]
-#     return "(?:" + "|".join(variants) + ")"
-
-
-# _ORG_FULL_PATTERNS: list[tuple[re.Pattern[str], str]] = [
-#     (
-#         re.compile(r"\b" + _fuzzy_org_pattern(key) + _OPEN_QUOTE + r"(" + _NAME_INNER + r")" + _CLOSE_QUOTE),
-#         abbr,
-#     )
-#     for key, abbr in sorted(_ORG_FULL.items(), key=lambda x: len(x[0]), reverse=True)
-# ]
 _RE_ORG_FULL = re.compile(
     r"\b(" + "|".join(sorted(_ORG_FULL, key=len, reverse=True)) + r")"
     r'(?:\s+[А-ЯЁ]{1,3})?\s*\.?\s*"([^"]+)"'
@@ -232,6 +223,54 @@ def _clean_org_name(raw: str) -> str:
     return re.sub(r'"+', " ", raw).strip()
 
 
+def _normalize_org_text(value: str) -> str:
+    return re.sub(r"[^А-ЯЁA-Z0-9]", "", value.upper())
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    if len(a) < len(b):
+        a, b = b, a
+    previous = list(range(len(b) + 1))
+    for i, ch_a in enumerate(a, start=1):
+        current = [i]
+        for j, ch_b in enumerate(b, start=1):
+            cost = 0 if ch_a == ch_b else 1
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + cost,
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    dist = _levenshtein_distance(a, b)
+    return 1.0 - dist / max(len(a), len(b))
+
+
+def _find_best_approx_org_form(prefix: str, threshold: float = 0.7) -> str | None:
+    normalized_prefix = _normalize_org_text(prefix)
+    if not normalized_prefix:
+        return None
+    best_form = None
+    best_score = threshold
+    for form in _ORG_FULL:
+        normalized_form = _normalize_org_text(form)
+        if not normalized_form:
+            continue
+        tail = normalized_prefix[-(len(normalized_form) + 8) :]
+        score = _similarity_ratio(tail, normalized_form)
+        if score > best_score:
+            best_form = form
+            best_score = score
+    return best_form
+
+
 def _find_orgs(text: str) -> list[OrganizationReference]:
     refs: list[OrganizationReference] = []
 
@@ -244,17 +283,6 @@ def _find_orgs(text: str) -> list[OrganizationReference]:
                 org_form=m.group(1),
             )
         )
-
-    # for pattern, abbr in _ORG_FULL_PATTERNS:
-    #     for m in pattern.finditer(text):
-    #         name = _RE_RUSAL_SPACE.sub(r"РУСАЛ \1", m.group(1).strip())  # group(1) — имя
-    #         refs.append(
-    #             OrganizationReference(
-    #                 token=Token(m.start(), m.end(), m.group()),
-    #                 name=name,
-    #                 org_form=abbr,
-    #             )
-    #         )
 
     for m in _RE_ORG_FULL.finditer(text):
         name = _RE_RUSAL_SPACE.sub(r"РУСАЛ \1", _clean_org_name(m.group(2)))
@@ -276,6 +304,22 @@ def _find_orgs(text: str) -> list[OrganizationReference]:
                 org_form=None,
             )
         )
+
+    # Попытка найти неполные формы организации по длинному префиксу перед именем
+    for m in re.finditer(r"\b([А-ЯЁ\s]{10,40})\s+" + _RE_RUSAL.pattern, text):
+        prefix = m.group(1)
+        candidate = _find_best_approx_org_form(prefix)
+        if candidate:
+            start = m.start(1)
+            end = m.end(0)
+            name = _RE_RUSAL_SPACE.sub(r"РУСАЛ \1", _clean_org_name(m.group(2)))
+            refs.append(
+                OrganizationReference(
+                    token=Token(start, end, text[start:end]),
+                    name=name,
+                    org_form=_ORG_FULL[candidate],
+                )
+            )
 
     for m in _RE_IP_FIO.finditer(text):
         refs.append(

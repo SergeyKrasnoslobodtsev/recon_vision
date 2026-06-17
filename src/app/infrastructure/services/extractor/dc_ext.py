@@ -32,25 +32,57 @@ def _find_dc_pairs(table: Table) -> list[_DcPair]:
     return [_DcPair(debit_col=sorted_cols[i], credit_col=sorted_cols[i + 1]) for i in range(0, len(sorted_cols) - 1, 2)]
 
 
-def _fuzzy_contains(pattern: str, text: str, min_ratio: float = 0.8) -> bool:
-    if not pattern:
+def _normalize_name(value: str) -> str:
+    return re.sub(r"[^А-ЯA-Z0-9]", "", value.upper())
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    if len(a) < len(b):
+        a, b = b, a
+    previous = list(range(len(b) + 1))
+    for i, ch_a in enumerate(a, start=1):
+        current = [i]
+        for j, ch_b in enumerate(b, start=1):
+            cost = 0 if ch_a == ch_b else 1
+            current.append(
+                min(
+                    previous[j] + 1,
+                    current[j - 1] + 1,
+                    previous[j - 1] + cost,
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    dist = _levenshtein_distance(a, b)
+    return 1.0 - dist / max(len(a), len(b))
+
+
+def _company_words(name: str) -> list[str]:
+    return [w for w in re.split(r"[^А-ЯA-Z0-9]+", name.upper()) if w]
+
+
+def _matches_company(value: str, company_name: str, threshold: float = 0.5) -> bool:
+    text = _normalize_name(value)
+    token = _normalize_name(company_name)
+
+    if not text or not token:
         return False
-    if pattern in text:
+
+    if token in text or text in token:
         return True
-    # только буквы, без пробелов и цифр
-    norm_pat = re.sub(r"[^А-ЯA-Z]", "", pattern.upper())
-    norm_txt = re.sub(r"[^А-ЯA-Z]", "", text.upper())
-    if not norm_pat:
-        return False
-    matched = 0
-    j = 0
-    for ch in norm_pat:
-        while j < len(norm_txt) and norm_txt[j] != ch:
-            j += 1
-        if j < len(norm_txt):
-            matched += 1
-            j += 1
-    return matched / len(norm_pat) >= min_ratio
+
+    words = _company_words(company_name)
+    matches = sum(1 for w in words if w and w in text)
+
+    if len(words) >= 2 and matches >= 2:
+        return True
+    logger.debug(f"Проверяем похожесть '{text}' и '{token}' (ratio={_similarity_ratio(text, token):.2f})")
+    return _similarity_ratio(text, token) >= threshold
 
 
 def _detect_role(text: str, companies: list[Company]) -> str | None:
@@ -60,7 +92,7 @@ def _detect_role(text: str, companies: list[Company]) -> str | None:
     if any(kw in normalized for kw in _BUYER_KEYWORDS):
         return "buyer"
     for c in companies:
-        if _fuzzy_contains(c.name, normalized):
+        if _matches_company(normalized, c.name):
             return c.role
     return None
 

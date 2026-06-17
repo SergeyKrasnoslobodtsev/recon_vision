@@ -188,10 +188,16 @@ def _assign_roles(text: str, orgs: list[str]) -> dict[str, _Role]:
     logger.debug(f"рабочая пара: {pair}")
     roles: dict[str, _Role] = {o: _Role.UNKNOWN for o in pair}
 
-    for o in pair:
-        if "РУСАЛ" in _org_token(o):
-            roles[o] = _Role.BUYER
-            logger.debug(f"РУСАЛ-правило: {o} -> BUYER")
+    rusals = [o for o in pair if "РУСАЛ" in _org_token(o)]
+
+    if len(rusals) == 1:
+        roles[rusals[0]] = _Role.BUYER
+        logger.debug(f"РУСАЛ-правило: {rusals[0]} -> BUYER")
+    elif len(rusals) == 2:
+        roles[rusals[0]] = _Role.SELLER
+        roles[rusals[1]] = _Role.BUYER
+        logger.debug(f"двойной РУСАЛ: {rusals[0]} -> SELLER, {rusals[1]} -> BUYER")
+
     _apply_symmetry(roles)
 
     for idx, event in enumerate(events):

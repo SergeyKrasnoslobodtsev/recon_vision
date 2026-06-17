@@ -43,7 +43,7 @@ paddleocr:
 page_orientation_preprocessor:
   model_name: PP-LCNet_x1_0_doc_ori
   model_dir: ./models/PP-LCNet_x1_0_doc_ori
-  min_orientation_score: 0.6
+  min_orientation_score: 0.79
   gamma: 10.0
   block_size: 15
   C: 5

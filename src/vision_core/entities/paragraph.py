@@ -53,9 +53,7 @@ class Paragraph(BaseModel):
 
     def is_same_line(self, other: "Paragraph", row_height: float) -> bool:
         """True если абзацы на одной вертикали и не дальше row_height друг от друга"""
-        self_left_align = abs(self.bbox.x_min - other.bbox.x_min) < (row_height * 0.5)
-        vertical_proximity = abs(self.bbox.y_min - other.bbox.y_min) <= row_height
-        return self_left_align and vertical_proximity
+        return abs(self.center[1] - other.center[1]) <= row_height and self.bbox.intersect(other.bbox) > 0
 
     def padding(self, pixel: float) -> "Paragraph":
         return Paragraph(

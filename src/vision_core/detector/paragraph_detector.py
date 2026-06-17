@@ -52,18 +52,14 @@ class ParagraphDetector:
             logger.warning("OCR-результаты пусты, параграфы не обнаружены")
             return []
 
-        median_row_height = self._median_row_height(ocr_results)
+        median_row_height = self._median_row_height(ocr_results) * 0.5
         table_bboxes = [t.bbox for t in tables]
 
         regions = self._preprocessor.extract_regions(image, table_bboxes, median_row_height)
-        paragraphs = self._map_ocr_to_regions(ocr_results, regions)
-        paragraphs = self._merge_same_line(paragraphs, median_row_height)
+        paragraphs = self._map_ocr_to_regions(ocr_results, regions, median_row_height)
 
         page_shape = (image.shape[0], image.shape[1])
-        paragraphs = [
-            p.classify_by_position(page_shape, table_bboxes, median_row_height)
-            for p in paragraphs
-        ]
+        paragraphs = [p.classify_by_position(page_shape, table_bboxes, median_row_height) for p in paragraphs]
         paragraphs = self._reading_order(paragraphs, median_row_height)
 
         if self._debug:
@@ -92,41 +88,36 @@ class ParagraphDetector:
         heights = [float(r.bbox[3] - r.bbox[1]) for r in ocr_results]
         return float(np.median(heights)) if heights else 1.0
 
-    def _map_ocr_to_regions(
-        self,
-        ocr_results: list[OcrResult],
-        regions: list[BBox],
-    ) -> list[Paragraph]:
+    def _map_ocr_to_regions(self, ocr_results: list[OcrResult], regions: list[BBox], line_tolerance) -> list[Paragraph]:
         paragraphs: list[Paragraph] = []
         for region in regions:
-            matched = [
-                r for r in ocr_results
-                if region.contains_center(BBox.from_tuple(r.bbox))
-            ]
+            matched = [r for r in ocr_results if region.contains_center(BBox.from_tuple(r.bbox))]
+
             if not matched:
                 continue
-            matched.sort(key=lambda r: float(r.bbox[1]))
+
+            matched.sort(key=lambda l: (int(float(l.bbox[1]) // line_tolerance), float(l.bbox[0])))
             blobs = [BBox.from_tuple(r.bbox) for r in matched]
-            paragraphs.append(
-                Paragraph(
-                    id=str(len(paragraphs)),
-                    text=" ".join(r.text for r in matched),
-                    bbox=BBox(
-                        x_min=min(b.x_min for b in blobs),
-                        y_min=min(b.y_min for b in blobs),
-                        x_max=max(b.x_max for b in blobs),
-                        y_max=max(b.y_max for b in blobs),
-                    ),
-                    blobs=blobs,
-                )
+            p = Paragraph(
+                id=str(len(paragraphs)),
+                text=" ".join(r.text for r in matched),
+                bbox=BBox(
+                    x_min=min(b.x_min for b in blobs),
+                    y_min=min(b.y_min for b in blobs),
+                    x_max=max(b.x_max for b in blobs),
+                    y_max=max(b.y_max for b in blobs),
+                ),
+                blobs=blobs,
             )
+
+            paragraphs.append(p)
+            logger.debug(f"region[{p.id}] строк={len(blobs)}")
+            for l in matched:
+                logger.debug(f" x={float(l.bbox[0]):.0f} y={float(l.bbox[1]):.0f}  '{l.text}'")
+
         return paragraphs
 
-    def _merge_same_line(
-        self,
-        paragraphs: list[Paragraph],
-        median_row_height: float,
-    ) -> list[Paragraph]:
+    def _merge_same_line(self, paragraphs: list[Paragraph], median_row_height: float) -> list[Paragraph]:
         result: list[Paragraph] = []
         for p in paragraphs:
             if result and result[-1].is_same_line(p, median_row_height):
@@ -153,7 +144,8 @@ class ParagraphDetector:
             band_ids.append(band_id)
 
         return [
-            p for _, p in sorted(
+            p
+            for _, p in sorted(
                 zip(band_ids, sorted_para, strict=True),
                 key=lambda x: (x[0], x[1].bbox.x_min),
             )

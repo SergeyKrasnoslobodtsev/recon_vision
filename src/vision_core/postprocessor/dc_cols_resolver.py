@@ -13,13 +13,52 @@ _CREDIT_KEYWORDS = {"кредит"}
 _HEADER_SCAN_ROWS = 4
 
 
+def _clean_letters(value: str) -> str:
+    return value.strip().lower()
+
+
+def _levenshtein_distance(a: str, b: str) -> int:
+    if len(a) < len(b):
+        a, b = b, a
+
+    previous = list(range(len(b) + 1))
+    for i, ch_a in enumerate(a, start=1):
+        current = [i]
+        for j, ch_b in enumerate(b, start=1):
+            cost = 0 if ch_a == ch_b else 1
+            current.append(
+                min(
+                    previous[j] + 1,  # удаление
+                    current[j - 1] + 1,  # вставка
+                    previous[j - 1] + cost,  # замена
+                )
+            )
+        previous = current
+    return previous[-1]
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    if not a or not b:
+        return 0.0
+    dist = _levenshtein_distance(a, b)
+    return 1.0 - dist / max(len(a), len(b))
+
+
+def _is_similar_keyword(value: str, keyword: str, threshold: float = 0.5) -> bool:
+    text = _clean_letters(value)
+    pattern = _clean_letters(keyword)
+    if pattern in text:
+        return True
+    logger.debug(f"Проверяем похожесть '{text}' и '{pattern}' (ratio={_similarity_ratio(text, pattern):.2f})")
+    return _similarity_ratio(text, pattern) >= threshold
+
+
 def is_dc_header(value: str) -> bool:
     return _is_dc_header(value)
 
 
 def _is_dc_header(value: str) -> bool:
-    normalized = value.strip().lower()
-    return any(kw in normalized for kw in _DEBIT_KEYWORDS | _CREDIT_KEYWORDS)
+    return any(_is_similar_keyword(value, kw) for kw in _DEBIT_KEYWORDS | _CREDIT_KEYWORDS)
 
 
 class DcColsResolver:
@@ -54,10 +93,9 @@ def _detect_dc_cols(table: Table) -> set[int]:
         for cell in row:
             if not cell.value:
                 continue
-            normalized = cell.value.strip().lower()
-            if any(kw in normalized for kw in _DEBIT_KEYWORDS):
+            if any(_is_similar_keyword(cell.value, kw) for kw in _DEBIT_KEYWORDS):
                 debit_cols.add(cell.col)
-            elif any(kw in normalized for kw in _CREDIT_KEYWORDS):
+            elif any(_is_similar_keyword(cell.value, kw) for kw in _CREDIT_KEYWORDS):
                 credit_cols.add(cell.col)
 
     if not debit_cols and not credit_cols:
