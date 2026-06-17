@@ -292,6 +292,11 @@ def extract_dc(
                 logger.error(f"таблица {table.id}: не удалось определить пары дебет/кредит")
                 raise DcExtractionError(table_id=table.id, details="не удалось определить пары дебет/кредит")
 
+            # Корень цепочки без заголовка Д/К — шапка документа, не заполняем
+            if table.continuation_of is None and table.get_dc_header_row() == -1:
+                logger.debug(f"таблица {table.id}: корень цепочки без заголовка Д/К — пропущено")
+                continue
+
             debit, credit = _extract_entries(table, pairs, "seller")
             buyer_debit, buyer_credit = _extract_entries(table, pairs, "buyer")
             enriched_debit = [

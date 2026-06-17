@@ -139,7 +139,7 @@ class Table(BaseModel):
 
     def is_valid(self) -> bool:
         """Проверяет, что таблица имеет больше одной ячейки и положительные размеры"""
-        return self.num_rows > 1 and self.num_cols > 4
+        return self.num_cols > 4
 
     def validate_structure(self) -> bool:
         """Детальная проверка: соответствуют ли ячейки размерам таблицы"""

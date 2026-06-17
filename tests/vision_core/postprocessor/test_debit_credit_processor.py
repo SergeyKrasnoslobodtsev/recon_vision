@@ -1,10 +1,7 @@
-import pytest
-
 from vision_core.entities.bbox import BBox
 from vision_core.entities.cell import Cell
 from vision_core.entities.page import Page
 from vision_core.entities.table import Table
-from vision_core.postprocessor.debit_credit_processor import DebitCreditProcessor
 
 
 def _bbox() -> BBox:

@@ -1,5 +1,5 @@
 [project]
-requires-python = ">=3.9,<3.12"
+requires-python = "==3.11.9"
 name = "recon_vision"
 version = "0.1.0"
 description = "A short description of the project"
@@ -18,19 +18,38 @@ dependencies = [
     "pillow>=11.3.0",
     "setuptools>=80.9.0",
     "paddleocr==3.3.2",
-    # "super-image>=0.2.0",    
+    "paddlex==3.3.13", 
+    "paddlepaddle-gpu==3.3.0 ; sys_platform == 'linux'",
+    "paddlepaddle==3.3.0 ; sys_platform == 'win32'"
 ]
 
-[project.optional-dependencies]
+[tool.uv]
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddlepaddle-gpu" }
+paddlepaddle = { index = "paddlepaddle-cpu" }
+
+[[tool.uv.index]]
+name = "paddlepaddle-gpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu130/"
+explicit = true
+
+[[tool.uv.index]]
+name = "paddlepaddle-cpu"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cpu/"
+explicit = true
+
+[dependency-groups]
 dev = [
     "pytest>=7.2",
     "pytest-asyncio>=0.20.3",
     "pytest-cov>=4.1.0",
     "ruff>=0.15.8",
     "matplotlib>=3.9.4",
-]
-aws = [
-    "mangum>=0.17.0"
 ]
 
 [tool.ruff]

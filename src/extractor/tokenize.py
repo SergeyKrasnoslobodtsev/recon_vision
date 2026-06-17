@@ -263,7 +263,7 @@ def _find_best_approx_org_form(prefix: str, threshold: float = 0.7) -> str | Non
         normalized_form = _normalize_org_text(form)
         if not normalized_form:
             continue
-        tail = normalized_prefix[-(len(normalized_form) + 8) :]
+        tail = normalized_prefix[-(len(normalized_form) + 150) :]
         score = _similarity_ratio(tail, normalized_form)
         if score > best_score:
             best_form = form
@@ -305,17 +305,14 @@ def _find_orgs(text: str) -> list[OrganizationReference]:
             )
         )
 
-    # Попытка найти неполные формы организации по длинному префиксу перед именем
-    for m in re.finditer(r"\b([А-ЯЁ\s]{10,40})\s+" + _RE_RUSAL.pattern, text):
-        prefix = m.group(1)
-        candidate = _find_best_approx_org_form(prefix)
+    # Нечёткий поиск полной формы (включая склонения) перед любым именем в кавычках
+    for m in re.finditer(r'\b([А-ЯЁ][А-ЯЁ\s]{40,150}[А-ЯЁ])\s+"([^"]+)"', text):
+        candidate = _find_best_approx_org_form(m.group(1))
         if candidate:
-            start = m.start(1)
-            end = m.end(0)
             name = _RE_RUSAL_SPACE.sub(r"РУСАЛ \1", _clean_org_name(m.group(2)))
             refs.append(
                 OrganizationReference(
-                    token=Token(start, end, text[start:end]),
+                    token=Token(m.start(), m.end(), m.group()),
                     name=name,
                     org_form=_ORG_FULL[candidate],
                 )

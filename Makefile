@@ -9,83 +9,78 @@ VENV_DIR ?= .venv
 PYTHON_BIN := $(shell $(PYTHON) -c 'import os, sys; print(os.path.realpath(sys.executable))' 2>/dev/null)
 UV ?= $(PYTHON_BIN) -m uv
 VENV_PYTHON := $(VENV_DIR)/bin/python
-PADDLE_VERSION ?= 3.3.0
-PADDLE_CPU_INDEX_URL ?= https://www.paddlepaddle.org.cn/packages/stable/cpu/
-PADDLE_GPU_INDEX_URL ?= https://www.paddlepaddle.org.cn/packages/stable/cu130/
-PADDLE_CPU_PACKAGE := paddlepaddle==$(PADDLE_VERSION)
-PADDLE_GPU_PACKAGE := paddlepaddle-gpu==$(PADDLE_VERSION)
 
-ifeq ($(TIMEOUT),)
-TIMEOUT := 60
-endif
-
-ifeq ($(MODEL_PATH),)
-MODEL_PATH := ./ml/model/
-endif
-
-ifeq ($(MODEL_NAME),)
-MODEL_NAME := model.pkl
-endif
 
 # Target section and Global definitions
 # -----------------------------------------------------------------------------
-.PHONY: all bootstrap-uv check-python clean test install install-base install-cpu install-gpu run deploy down generate_dot_env venv
+.PHONY: help run
 
-all: clean install test run deploy down
-
-bootstrap-uv:
-	@$(PYTHON_BIN) -m uv --version >/dev/null 2>&1 || { \
-		echo "uv не найден, устанавливаю в базовый интерпретатор $(PYTHON_BIN)"; \
-		$(PYTHON_BIN) -m ensurepip --upgrade >/dev/null 2>&1 || true; \
-		$(PYTHON_BIN) -m pip install --upgrade pip uv; \
-	}
-
-check-python:
-	@command -v $(PYTHON) >/dev/null 2>&1 || { \
-		echo "Python interpreter '$(PYTHON)' not found. Install Python $(PYTHON_VERSION) or pass PYTHON=/path/to/python3.11"; \
-		exit 1; \
-	}
-	@$(PYTHON) -c 'import sys; required = (3, 11, 9); current = sys.version_info[:3]; raise SystemExit(0) if current == required else SystemExit("Expected Python 3.11.9, got {}.{}.{}".format(*current))'
+help:
+	@echo "Available commands:"
+	@echo "  make install  - Initialize the project and lock dependencies"
+	@echo "  make sync     - Force sync the virtual environment with pyproject.toml"
+	@echo "  make run      - Execute the main application entry point"
+	@echo "  make test     - Execute test suites using pytest"
+	@echo "  make lint     - Run code quality linter checks"
+	@echo "  make format   - Automatically reformat code files"
+	@echo "  make clean    - Remove build and caching artifacts"
 
 
-venv: check-python bootstrap-uv
-	@test -x $(VENV_PYTHON) || $(UV) venv --python $(PYTHON_BIN) $(VENV_DIR)
+# all: clean install test run deploy down
 
-test: venv
-	$(UV) run --python $(VENV_PYTHON) pytest tests -vv --show-capture=all
+# bootstrap-uv:
+# 	@$(PYTHON_BIN) -m uv --version >/dev/null 2>&1 || { \
+# 		echo "uv не найден, устанавливаю в базовый интерпретатор $(PYTHON_BIN)"; \
+# 		$(PYTHON_BIN) -m ensurepip --upgrade >/dev/null 2>&1 || true; \
+# 		$(PYTHON_BIN) -m pip install --upgrade pip uv; \
+# 	}
 
-metrics:
-	radon mi -s src/
+# check-python:
+# 	@command -v $(PYTHON) >/dev/null 2>&1 || { \
+# 		echo "Python interpreter '$(PYTHON)' not found. Install Python $(PYTHON_VERSION) or pass PYTHON=/path/to/python3.11"; \
+# 		exit 1; \
+# 	}
+# 	@$(PYTHON) -c 'import sys; required = (3, 11, 9); current = sys.version_info[:3]; raise SystemExit(0) if current == required else SystemExit("Expected Python 3.11.9, got {}.{}.{}".format(*current))'
 
 
-install-base: generate_dot_env venv
-	$(UV) pip install --python $(VENV_PYTHON) -e ".[dev]"
+# venv: check-python bootstrap-uv
+# 	@test -x $(VENV_PYTHON) || $(UV) venv --python $(PYTHON_BIN) $(VENV_DIR)
 
-install: install-cpu
+# test: venv
+# 	$(UV) run --python $(VENV_PYTHON) pytest tests -vv --show-capture=all
 
-install-cpu: install-base
-	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
-	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_CPU_INDEX_URL) $(PADDLE_CPU_PACKAGE)
+# metrics:
+# 	radon mi -s src/
 
-install-gpu: install-base
-	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
-	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_GPU_INDEX_URL) $(PADDLE_GPU_PACKAGE)
 
-run: venv
+# install-base: generate_dot_env venv
+# 	$(UV) pip install --python $(VENV_PYTHON) -e ".[dev]"
+
+# install: install-cpu
+
+# install-cpu: install-base
+# 	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
+# 	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_CPU_INDEX_URL) $(PADDLE_CPU_PACKAGE)
+
+# install-gpu: install-base
+# 	-$(UV) pip uninstall --python $(VENV_PYTHON) paddlepaddle paddlepaddle-gpu
+# 	$(UV) pip install --python $(VENV_PYTHON) --index-url $(PADDLE_GPU_INDEX_URL) $(PADDLE_GPU_PACKAGE)
+
+run:
 	PYTHONPATH=src/ $(VENV_PYTHON) -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 
-client_run: venv
-	PYTHONPATH=src/ $(VENV_PYTHON) -m src.client.client_gui
+# client_run: venv
+# 	PYTHONPATH=src/ $(VENV_PYTHON) -m src.client.client_gui
 
-deploy: generate_dot_env
-	docker-compose build
-	docker-compose up -d
+# deploy: generate_dot_env
+# 	docker-compose build
+# 	docker-compose up -d
 
-down:
-	docker-compose down
+# down:
+# 	docker-compose down
 
-generate_dot_env:
-	@test -f .env || cp .env.example .env
+# generate_dot_env:
+# 	@test -f .env || cp .env.example .env
 
 clean:
 	@find . -name '*.pyc' -exec rm -rf {} \;

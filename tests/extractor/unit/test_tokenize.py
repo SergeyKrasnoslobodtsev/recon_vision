@@ -1,7 +1,10 @@
 """Тесты токенизатора: даты, организации, суммы, перекрытия."""
 
+from typing import Literal, LiteralString
+
 import pytest
 
+from extractor.normalize import transform_text
 from extractor.tokenize import (
     AnyReference,
     CurrencyReference,
@@ -66,7 +69,34 @@ class TestDates:
             ("ДЕКАБРЯ", "12"),
         ],
     )
-    def test_ru_date_all_months(self, month_str, expected_num):
+    def test_ru_date_all_months(
+        self,
+        month_str: Literal["ЯНВАРЯ"]
+        | Literal["ФЕВРАЛЯ"]
+        | Literal["МАРТА"]
+        | Literal["АПРЕЛЯ"]
+        | Literal["МАЯ"]
+        | Literal["МАЙ"]
+        | Literal["ИЮНЯ"]
+        | Literal["ИЮЛЯ"]
+        | Literal["АВГУСТА"]
+        | Literal["СЕНТЯБРЯ"]
+        | Literal["ОКТЯБРЯ"]
+        | Literal["НОЯБРЯ"]
+        | Literal["ДЕКАБРЯ"],
+        expected_num: Literal["01"]
+        | Literal["02"]
+        | Literal["03"]
+        | Literal["04"]
+        | Literal["05"]
+        | Literal["06"]
+        | Literal["07"]
+        | Literal["08"]
+        | Literal["09"]
+        | Literal["10"]
+        | Literal["11"]
+        | Literal["12"],
+    ):
         result = dates(tokenize(f"НА 15 {month_str} 2024"))
         assert result[0].date == f"15.{expected_num}.2024"
 
@@ -80,7 +110,24 @@ class TestDates:
             ("III КВАРТАЛ 2024", "01.07.2024", "30.09.2024"),
         ],
     )
-    def test_quarter(self, q_str, start, end):
+    def test_quarter(
+        self,
+        q_str: Literal["1 КВАРТАЛ 2023"]
+        | Literal["2 КВАРТАЛ 2023"]
+        | Literal["3 КВАРТАЛ 2023"]
+        | Literal["4 КВАРТАЛ 2023"]
+        | Literal["III КВАРТАЛ 2024"],
+        start: Literal["01.01.2023"]
+        | Literal["01.04.2023"]
+        | Literal["01.07.2023"]
+        | Literal["01.10.2023"]
+        | Literal["01.07.2024"],
+        end: Literal["31.03.2023"]
+        | Literal["30.06.2023"]
+        | Literal["30.09.2023"]
+        | Literal["31.12.2023"]
+        | Literal["30.09.2024"],
+    ):
         result = dates(tokenize(q_str))
         assert len(result) == 1
         assert result[0].date == start
@@ -107,6 +154,23 @@ class TestDates:
 
 class TestOrganizations:
     # TODO: переписать тесты с использование parametrize и разными формами организации, чтобы проверить все варианты
+    @pytest.mark.parametrize(
+        ("input", "org_name", "org_form"),
+        [
+            (
+                "за периодЯнварь 2025 г. - Январь 2026 г. можду федеральным государственным образовательным бюджетным "
+                'учреждением высшего образования "Финансовый университет при Правительстве Российской Федерации"',
+                "ФИНАНСОВЫЙ УНИВЕРСИТЕТ ПРИ ПРАВИТЕЛЬСТВЕ РОССИЙСКОЙ ФЕДЕРАЦИИ",
+                "ФГОБУ ВО",
+            ),
+            ('и ПАО "РУСАЛ БРАТСК" по договору РБ-Д-25-776 от 08.09.2025', "РУСАЛ БРАТСК", "ПАО"),
+        ],
+    )
+    def test_extract_org(self, input, org_name, org_form):
+        normalize_text = transform_text(input)
+        result = orgs(tokenize(normalize_text))
+        assert result[0].org_form == org_form
+        assert result[0].name == org_name
 
     def test_ooo_with_form(self):
         result = orgs(tokenize('ООО "РОМАШКА"'))
@@ -162,7 +226,23 @@ class TestOrganizations:
             ("ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ", "ФГУП"),
         ],
     )
-    def test_full_org_form_recognized(self, full_form, expected_abbr):
+    def test_full_org_form_recognized(
+        self,
+        full_form: Literal["АКЦИОНЕРНОЕ ОБЩЕСТВО"]
+        | Literal["ОТКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО"]
+        | Literal["ЗАКРЫТОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО"]
+        | Literal["ПУБЛИЧНОЕ АКЦИОНЕРНОЕ ОБЩЕСТВО"]
+        | Literal["ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ"]
+        | Literal["ИНДИВИДУАЛЬНЫЙ ПРЕДПРИНИМАТЕЛЬ"]
+        | Literal["ФЕДЕРАЛЬНОЕ ГОСУДАРСТВЕННОЕ УНИТАРНОЕ ПРЕДПРИЯТИЕ"],
+        expected_abbr: Literal["АО"]
+        | Literal["ОАО"]
+        | Literal["ЗАО"]
+        | Literal["ПАО"]
+        | Literal["ООО"]
+        | Literal["ИП"]
+        | Literal["ФГУП"],
+    ):
         result = orgs(tokenize(f'{full_form} "РОМАШКА"'))
         assert len(result) == 1
         assert result[0].name == "РОМАШКА"
@@ -185,7 +265,15 @@ class TestOrganizations:
             ("мы нижеподписавшиея, ИП ВАЛЬКОВ А.А. с одной стороны", "ВАЛЬКОВ А.А."),
         ],
     )
-    def test_ip_fio(self, text, expected_name):
+    def test_ip_fio(
+        self,
+        text: LiteralString | LiteralString | LiteralString | LiteralString | LiteralString,
+        expected_name: Literal["ВАЛЬКОВ АЛЕКСЕЙ АЛЕКСАНДРОВИЧ"]
+        | Literal["А. А. ВАЛЬКОВ"]
+        | Literal["А.А. ВАЛЬКОВ"]
+        | Literal["ВАЛЬКОВ А. А."]
+        | Literal["ВАЛЬКОВ А.А."],
+    ):
         result = orgs(tokenize(text))
         assert len(result) == 1
         assert result[0].org_form == "ИП"
@@ -207,7 +295,11 @@ class TestCurrencies:
             ("1 000,00", 1000.0),
         ],
     )
-    def test_parse(self, text, expected):
+    def test_parse(
+        self,
+        text: Literal["23 035 017,97"] | Literal["47 761,70"] | Literal["0,00"] | Literal["1 000,00"],
+        expected: float,
+    ):
         result = currencies(tokenize(text))
         assert len(result) == 1
         assert result[0].value == pytest.approx(expected)
