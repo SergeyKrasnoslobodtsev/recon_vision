@@ -1,77 +1,43 @@
-import pytest
 from pathlib import Path
-from loguru import logger
-from vision_core.analizer.page_analyzer import PageAnalyzer
-
-from vision_core.utils.drawer import Drawer
 
 import numpy as np
+from loguru import logger
 
-
-# command pytest tests/vision_core/detector/test_paragraph_detector.py -v -s
+from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.detector.paragraph_detector import ParagraphDetector
+from vision_core.detector.table_detector import TableDetector
+from vision_core.entities.paragraph import ParagraphType
+from vision_core.loader.pdf_loader import PDFLoader
+from vision_core.ocr.paddle_ocr import PaddleOcrEngine
+from vision_core.postprocessor.cell_text_filler import CellTextFiller
+from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
+from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 
 
 class TestParagraphDetector:
-    """Тесты для ParagraphDetector"""
+    def test_returns_empty_for_no_ocr(self):
+        detector = ParagraphDetector()
+        image = np.ones((800, 600, 3), dtype="uint8") * 255
+        assert detector.detect_paragraphs(image, ocr_results=[], tables=[]) == []
 
-    def test_page_analyzer(
-        self,
-        pdf_path: Path,
-        output_dir: Path,
-        pdf_loader_single_page: np.ndarray,
-        page_analyzer: PageAnalyzer,
-    ):
-        """Тестирует детекцию абзацев на изображении"""
+    def test_integration(self, pdf_file: Path, output_dir: Path):
+        observer = DebugImageObserver(output_dir=output_dir)
 
-        if not pdf_path.exists():
-            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+        with PDFLoader(pdf_file.read_bytes()) as loader:
+            original = loader.get_page_image(0, dpi=300)
 
-        pdf_files = list(pdf_path.glob("*.pdf"))
+        processed = ImagePreprocessor(debug_image=observer).process(original)
+        oriented, _ = PageOrientationPreprocessor(debug_image=observer).process(processed)
+        tables = TableDetector(debug_image=observer).detect_tables(oriented)
+        ocr_results = PaddleOcrEngine().predict([oriented])
+        ocr_results = ocr_results[0] if ocr_results else []
 
-        if not pdf_files:
-            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
-        page_analyzer = PageAnalyzer()
-        for test_file in pdf_files[:1]:
-            logger.info(f"Тестирование на файле: {test_file.name}")
+        cell_text_filler = CellTextFiller(debug_image=observer)
+        cell_text_filler.fill_cells(tables, ocr_results, image=oriented)
+        filtered_ocr = cell_text_filler.exclude_table_text(ocr_results, tables)
 
-            pdf_bytes = test_file.read_bytes()
-            original = pdf_loader_single_page(pdf_bytes)
+        paragraphs = ParagraphDetector(debug_image=observer).detect_paragraphs(oriented, filtered_ocr, tables)
 
-            page = page_analyzer.analyze_page(original)
-
-            debug_image = original.copy()
-
-            drawer = Drawer(debug_image, side_by_side=True)
-
-            for paragraph in page.paragraphs:
-                if paragraph.type == 0:
-                    drawer.draw_structure(
-                        paragraph.bbox.to_tuple(),
-                        label=f"{paragraph.type} {paragraph.id}",
-                        color="darkgreen",
-                        position=0,
-                    )
-                elif paragraph.type == 1:
-                    drawer.draw_structure(
-                        paragraph.bbox.to_tuple(),
-                        label=f"{paragraph.type} {paragraph.id}",
-                        color="darkblue",
-                        position=0,
-                    )
-                else:
-                    drawer.draw_structure(
-                        paragraph.bbox.to_tuple(),
-                        label=f"{paragraph.type} {paragraph.id}",
-                        color="darkorange",
-                        position=0,
-                    )
-
-            for table in page.tables:
-                drawer.draw_structure(
-                    table.bbox.to_tuple(),
-                    label=f"Table {table.id}",
-                    color="blue",
-                    position=0,
-                )
-
-            drawer.save(output_dir / f"detected_paragraphs_{test_file.stem}.png")
+        assert isinstance(paragraphs, list)
+        assert {p.type for p in paragraphs}.issubset(set(ParagraphType))
+        logger.success(f"Детекция параграфов пройдена: {pdf_file.name}")

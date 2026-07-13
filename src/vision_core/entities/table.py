@@ -1,7 +1,11 @@
-from pydantic import BaseModel
 from functools import cached_property
-from .cell import Cell
+
+from pydantic import BaseModel, Field
+
+from vision_core.utils.markdown_utils import cell_text as _cell_text
+
 from .bbox import BBox
+from .cell import Cell
 
 
 class Table(BaseModel):
@@ -12,6 +16,8 @@ class Table(BaseModel):
     cells: list["Cell"] = []
     start_page: int = 0
     end_page: int = 0
+    continuation_of: str | None = None
+    dc_cols: set[int] = Field(default_factory=set)
 
     @property
     def area(self) -> float:
@@ -45,6 +51,8 @@ class Table(BaseModel):
             cells=[cell.padding(pixel) for cell in self.cells],
             start_page=self.start_page,
             end_page=self.end_page,
+            continuation_of=self.continuation_of,
+            dc_cols=self.dc_cols.copy(),
         )
 
     def intersect(self, other: "Table") -> float:
@@ -73,7 +81,14 @@ class Table(BaseModel):
 
     def get_cell(self, row: int, col: int):
         """Получить ячейку по номеру строки и столбца"""
-        return self._cell_index.get((row, col))
+        cell = self._cell_index.get((row, col))
+        if cell is not None:
+            return cell
+
+        for cell in self.cells:
+            if cell.row <= row < cell.row + cell.rowspan and cell.col <= col < cell.col + cell.colspan:
+                return cell
+        return None
 
     def get_rows(self, include_merged: bool = False) -> list[list[Cell]]:
         if not include_merged:
@@ -113,9 +128,18 @@ class Table(BaseModel):
         else:
             return heights[mid]
 
+    def get_dc_header_row(self) -> int:
+        """Возвращает row-индекс строки с заголовками дебет/кредит, или -1."""
+        from vision_core.postprocessor.dc_cols_resolver import is_dc_header
+
+        for cell in self.cells:
+            if cell.col in self.dc_cols and cell.value and is_dc_header(cell.value):
+                return cell.row
+        return -1
+
     def is_valid(self) -> bool:
         """Проверяет, что таблица имеет больше одной ячейки и положительные размеры"""
-        return self.num_rows > 1 and self.num_cols > 1 and len(self.cells) > 1
+        return self.num_cols > 4
 
     def validate_structure(self) -> bool:
         """Детальная проверка: соответствуют ли ячейки размерам таблицы"""
@@ -128,5 +152,35 @@ class Table(BaseModel):
                 return False
         return True
 
+    def to_markdown(self) -> str:
+        if not self.cells or self.num_cols == 0:
+            return ""
+        grid = self._build_markdown_grid()
+        lines: list[str] = []
+        for row_idx, row in enumerate(grid):
+            lines.append("| " + " | ".join(row) + " |")
+            if row_idx == 0:
+                lines.append("| " + " | ".join("---" for _ in row) + " |")
+        continuation = f" (продолжение таблицы {self.continuation_of})" if self.continuation_of else ""
+        header = f"<!-- table_id={self.id} rows={self.num_rows} cols={self.num_cols}{continuation} -->"
+        return header + "\n" + "\n".join(lines)
+
+    def _build_markdown_grid(self) -> list[list[str]]:
+        grid: list[list[str]] = [[""] * self.num_cols for _ in range(self.num_rows)]
+        for cell in self.cells:
+            text = _cell_text(cell.value)
+            r_end = min(cell.row + cell.rowspan, self.num_rows)
+            c_end = min(cell.col + cell.colspan, self.num_cols)
+            for r in range(cell.row, r_end):
+                for c in range(cell.col, c_end):
+                    if r == cell.row and c == cell.col:
+                        grid[r][c] = text
+                    elif c > cell.col:
+                        grid[r][c] = "<"
+                    else:
+                        grid[r][c] = "^"
+        return grid
+
     def __str__(self) -> str:
-        return f"Table(id={self.id}, rows={self.num_rows}, cols={self.num_cols}, pages={self.start_page}-{self.end_page})"
+        return f"Table(id={self.id}, rows={self.num_rows}, cols={self.num_cols},\
+                 pages={self.start_page}-{self.end_page})"

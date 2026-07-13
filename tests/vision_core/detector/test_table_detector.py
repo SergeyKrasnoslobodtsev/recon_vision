@@ -1,108 +1,72 @@
-import pytest
 from pathlib import Path
-from loguru import logger
+
 import numpy as np
+import pytest
+from loguru import logger
+
+from vision_core.debug_image_observer import DebugImageObserver
+from vision_core.detector.table_detector import TableDetector
+from vision_core.entities.bbox import BBox
+from vision_core.entities.table import Table
+from vision_core.loader.pdf_loader import PDFLoader
+from vision_core.preprocessor.image_orientation import PageOrientationPreprocessor
 from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
 from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.utils.drawer import Drawer
-
-# command pytest tests/vision_core/detector/test_table_detector.py -v -s
 
 
 class TestTableDetector:
-    """Тесты для TableDetector"""
+    @pytest.fixture
+    def table_detector(self) -> TableDetector:
+        return TableDetector()
 
-    def test_find_tables(
-        self,
-        pdf_path: Path,
-        output_dir: Path,
-        pdf_loader_single_page: np.ndarray,
-        preprocessor_img: ImagePreprocessor,
-        preprocessor_table: TablePreprocessor,
-        table_detector: TableDetector,
-    ):
-        """Тестирует детекцию таблиц на изображении"""
+    def test_get_table_line_mask_uses_explicit_mask(self, table_detector: TableDetector):
+        table = Table(id="table_0", bbox=BBox(x_min=1, y_min=1, x_max=4, y_max=4), num_rows=2, num_cols=2)
+        table_mask = np.zeros((6, 6), dtype=np.uint8)
+        table_mask[1:4, 1:4] = 255
 
-        if not pdf_path.exists():
-            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+        roi_mask = table_detector.get_table_line_mask(table, table_mask)
 
-        pdf_files = list(pdf_path.glob("*.pdf"))
+        assert roi_mask.shape == (3, 3)
+        assert np.all(roi_mask == 255)
 
-        if not pdf_files:
-            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
+    def test_remove_table_lines_uses_passed_mask_without_hidden_state(self, table_detector: TableDetector):
+        image = np.zeros((6, 6), dtype=np.uint8)
+        image[1:4, 1:4] = 100
+        table = Table(id="table_0", bbox=BBox(x_min=1, y_min=1, x_max=4, y_max=4), num_rows=2, num_cols=2)
+        table_mask = np.zeros((6, 6), dtype=np.uint8)
+        table_mask[2, 1:4] = 255
 
-        for test_file in pdf_files[:1]:
-            logger.info(f"Тестирование на файле: {test_file.name}")
-            pdf_bytes = test_file.read_bytes()
+        result = table_detector.remove_table_lines(
+            image=image, table=table, fill_value=255, padding=0, table_mask=table_mask
+        )
 
-            original = pdf_loader_single_page(pdf_bytes)
+        assert np.all(result[2, 1:4] == 255)
+        assert result[1, 1] == 100
 
-            processed_img = preprocessor_img.process(original)
+    def test_find_tables(self, pdf_file: Path, output_dir: Path):
+        observer = DebugImageObserver(output_dir=output_dir)
 
-            mask_table = preprocessor_table.create_table_mask(processed_img)
+        with PDFLoader(pdf_file.read_bytes()) as loader:
+            original = loader.get_page_image(0, dpi=300)
 
-            bboxes = table_detector.extract_raw_tables(mask_table)
+        processed = ImagePreprocessor().process(original)
+        oriented, _ = PageOrientationPreprocessor().process(processed)
+        TableDetector(debug_image=observer).extract_raw_tables(
+            TablePreprocessor(debug_image=observer).create_table_mask(oriented)
+        )
+        logger.success(f"Детекция таблиц пройдена: {pdf_file.name}")
 
-            debug_image = original.copy()
-            drawer = Drawer(debug_image, side_by_side=True)
-            for i, bbox in enumerate(bboxes):
-                drawer.draw_structure(
-                    bbox.to_tuple(),
-                    label=f"Table {i + 1}",
-                    color="blue",
-                    position=0,
-                )
-            drawer.save(output_dir / f"detected_tables_{test_file.stem}.png")
+    def test_extract_tables(self, pdf_file: Path, output_dir: Path):
+        observer = DebugImageObserver(output_dir=output_dir)
 
-    def test_extract_tables(
-        self,
-        pdf_path: Path,
-        output_dir: Path,
-        pdf_loader_single_page: np.ndarray,
-        preprocessor_img: ImagePreprocessor,
-        table_detector: TableDetector,
-    ):
-        """Тестирует детекцию таблиц на изображении"""
+        with PDFLoader(pdf_file.read_bytes()) as loader:
+            original = loader.get_page_image(0, dpi=300)
 
-        if not pdf_path.exists():
-            pytest.skip(f"Папка с тестовыми файлами не найдена: {pdf_path}")
+        processed = ImagePreprocessor().process(original)
+        oriented, _ = PageOrientationPreprocessor().process(processed)
+        tables = TableDetector(debug_image=observer).detect_tables(oriented)
 
-        pdf_files = list(pdf_path.glob("*.pdf"))
+        if not tables:
+            logger.warning(f"Таблицы не найдены: {pdf_file.name}")
 
-        if not pdf_files:
-            pytest.skip(f"PDF файлы не найдены в {pdf_path}")
-
-        for test_file in pdf_files[:1]:
-            logger.info(f"Тестирование на файле: {test_file.name}")
-            pdf_bytes = test_file.read_bytes()
-
-            original = pdf_loader_single_page(pdf_bytes)
-
-            processed_img = preprocessor_img.process(original)
-
-            tables = table_detector.detect_tables(processed_img)
-
-            debug_image = original.copy()
-
-            drawer = Drawer(debug_image, side_by_side=True)
-
-            if not tables:
-                logger.warning(f"Таблицы не найдены в файле: {test_file.name}")
-                # debug_image.save(output_dir / f"no_tables_{test_file.stem}.png")
-            else:
-                for i, table in enumerate(tables):
-                    drawer.draw_structure(
-                        table.bbox.to_tuple(),
-                        label=f"Table {i + 1}",
-                        color="blue",
-                        position=0,
-                    )
-                    for cell in table.cells:
-                        drawer.draw_structure(
-                            cell.bbox.to_tuple(),
-                            label=f"R{cell.row}C{cell.col}S{cell.colspan}",
-                            color="darkgreen",
-                            position=0,
-                        )
-            drawer.save(output_dir / f"detected_tables_struct_{test_file.stem}.png")
+        logger.success(f"Структура таблиц извлечена: {pdf_file.name}")

@@ -1,9 +1,11 @@
-from vision_core.ocr.base import OcrEngine, OcrResult
-from vision_core.config import VisionCoreConfig
-from paddleocr import PaddleOCR
 from pathlib import Path
+
 import numpy as np
-from typing import Union, Optional
+from paddleocr import PaddleOCR
+
+from vision_core.config import PaddleOcrConfig
+from vision_core.exceptions import ModelLoadError
+from vision_core.ocr.base import OcrEngine, OcrResult
 
 
 class PaddleOcrEngine(OcrEngine):
@@ -13,23 +15,20 @@ class PaddleOcrEngine(OcrEngine):
     Поддерживает пакетную обработку и итеративный режим для больших объёмов данных.
 
     Attributes:
-        cfg: Конфигурация PaddleOCR из VisionCoreConfig.
+        cfg: Конфигурация PaddleOCR.
         ocr: Экземпляр PaddleOCR для выполнения распознавания.
     """
 
-    def __init__(self, config: Optional[VisionCoreConfig] = None):
+    def __init__(self, config: PaddleOcrConfig | None = None):
         """Инициализирует движок PaddleOCR.
 
         Args:
-            config: Конфигурация VisionCore. Если None, используется конфигурация по умолчанию.
+            config: Конфигурация PaddleOCR. Если None, используется конфигурация по умолчанию.
 
         Raises:
             FileNotFoundError: Если директории с моделями распознавания или детекции не найдены.
         """
-        if config is None:
-            config = VisionCoreConfig()
-
-        self.cfg = config.paddleocr
+        self.cfg = config or PaddleOcrConfig()
 
         if not Path(self.cfg.text_detection_model_dir).exists():
             raise FileNotFoundError(
@@ -41,18 +40,21 @@ class PaddleOcrEngine(OcrEngine):
                 f"Директория модели распознавания текста не найдена: {self.cfg.text_recognition_model_dir}"
             )
 
-        self.ocr = PaddleOCR(
-            text_recognition_model_name=self.cfg.text_recognition_model_name,
-            text_recognition_model_dir=self.cfg.text_recognition_model_dir,
-            text_detection_model_name=self.cfg.text_detection_model_name,
-            text_detection_model_dir=self.cfg.text_detection_model_dir,
-            use_doc_orientation_classify=self.cfg.use_doc_orientation_classify,
-            use_doc_unwarping=self.cfg.use_doc_unwarping,
-            use_textline_orientation=self.cfg.use_textline_orientation,
-            device=self.cfg.device,
-        )
+        try:
+            self.ocr = PaddleOCR(
+                text_recognition_model_name=self.cfg.text_recognition_model_name,
+                text_recognition_model_dir=self.cfg.text_recognition_model_dir,
+                text_detection_model_name=self.cfg.text_detection_model_name,
+                text_detection_model_dir=self.cfg.text_detection_model_dir,
+                use_doc_orientation_classify=self.cfg.use_doc_orientation_classify,
+                use_doc_unwarping=self.cfg.use_doc_unwarping,
+                use_textline_orientation=self.cfg.use_textline_orientation,
+                device=self.cfg.device,
+            )
+        except Exception as e:
+            raise ModelLoadError(details=str(e)) from e
 
-    def predict_iter(self, images: Union[np.ndarray, list[np.ndarray]]):
+    def predict_iter(self, images: np.ndarray | list[np.ndarray]):
         """Распознаёт текст на изображениях в итеративном режиме.
 
         Обрабатывает изображения по одному и возвращает результаты через генератор.
@@ -84,7 +86,7 @@ class PaddleOcrEngine(OcrEngine):
             scores = res["rec_scores"]
 
             out: list[OcrResult] = []
-            for box, text, score in zip(boxes, texts, scores):
+            for box, text, score in zip(boxes, texts, scores, strict=False):
                 out.append(
                     OcrResult(
                         text=str(text),
@@ -95,7 +97,7 @@ class PaddleOcrEngine(OcrEngine):
 
             yield out
 
-    def predict(self, images: Union[np.ndarray, list[np.ndarray]]):
+    def predict(self, images: np.ndarray | list[np.ndarray]):
         """Распознаёт текст на изображениях и возвращает все результаты сразу.
 
         Args:

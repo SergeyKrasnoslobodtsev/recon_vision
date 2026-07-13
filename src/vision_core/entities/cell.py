@@ -1,6 +1,6 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
 from .bbox import BBox
-from typing import Union, Optional
 
 
 class Cell(BaseModel):
@@ -8,9 +8,8 @@ class Cell(BaseModel):
     col: int
     colspan: int = 1
     rowspan: int = 1
-    value: Optional[Union[str]] = None
+    value: str | None = None
     bbox: BBox
-    from pydantic import Field
 
     blobs: list[BBox] = Field(default_factory=list)
 
@@ -62,7 +61,7 @@ class Cell(BaseModel):
         """Площадь пересечения двух ячеек"""
         return self.bbox.intersect(other.bbox)
 
-    def get_largest_free_space(self, padding: float = 1.0) -> Optional[BBox]:
+    def get_largest_free_space(self, padding: float = 1.0) -> BBox | None:
         """Возвращает наибольшее свободное пространство в ячейке"""
         if not self.blobs:
             return self.bbox
@@ -114,4 +113,5 @@ class Cell(BaseModel):
         return max(free_spaces, key=lambda b: b.area) if free_spaces else None
 
     def __str__(self) -> str:
-        return f"Cell(row={self.row}, col={self.col}, colspan={self.colspan}, rowspan={self.rowspan}, value={self.value}, bbox={self.bbox}, blobs={self.blobs})"
+        return f"Cell(row={self.row}, col={self.col}, colspan={self.colspan},\
+                 rowspan={self.rowspan}, value={self.value}, bbox={self.bbox}, blobs={self.blobs})"

@@ -1,8 +1,9 @@
-from pydantic import BaseModel, Field
 from typing import Any
 
-from vision_core.entities.table import Table
+from pydantic import BaseModel, Field
+
 from vision_core.entities.paragraph import Paragraph
+from vision_core.entities.table import Table
 
 
 class Page(BaseModel):

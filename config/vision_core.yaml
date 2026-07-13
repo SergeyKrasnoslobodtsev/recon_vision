@@ -1,0 +1,64 @@
+dpi: 200
+ocr_confidence_threshold: 0.45
+
+image_preprocessor:
+  kernel: 3
+  sigma: 1.5
+  amount: 1.0
+
+table_preprocessor:
+  gamma: 10.0
+  block_size: 11
+  C: 5
+
+table_detector:
+  scale_horizontal_line: 40
+  height_vertical_line: 40
+  border_tol: 8
+  scale_width: 0.35
+  scale_height: 0.08
+  min_density: 0.01
+  intersection_over_min_thr: 0.2
+  scale_horizontal_line: 20
+  min_line_length_ratio: 8
+  max_line_gap_ratio: 10
+  h_axis_tol: 5
+  h_merge_gap: 5
+  h_min_line_length: 200
+  max_line_gap_ratio_v: 0.1
+  v_axis_tol: 5
+  v_merge_gap: 5
+  mode_merge_cells: cols
+
+paddleocr:
+  text_recognition_model_name: cyrillic_PP-OCRv5_mobile_rec
+  text_recognition_model_dir: ./models/cyrillic_PP-OCRv5_mobile_rec
+  text_detection_model_name: PP-OCRv5_server_det
+  text_detection_model_dir: ./models/PP-OCRv5_server_det
+  use_doc_orientation_classify: false
+  use_doc_unwarping: false
+  use_textline_orientation: false
+  device: gpu
+
+page_orientation_preprocessor:
+  model_name: PP-LCNet_x1_0_doc_ori
+  model_dir: ./models/PP-LCNet_x1_0_doc_ori
+  min_orientation_score: 0.79
+  gamma: 10.0
+  block_size: 15
+  C: 5
+  scale_horizontal_line: 40
+  height_vertical_line: 40
+
+paragraph_preprocessor:
+  adaptive_block_size: 21
+  adaptive_c: 20
+  dilate_kw_ratio: 0.4
+  dilate_kh_ratio: 0.8
+  dilate_kw_min: 10
+  dilate_kh_min: 7
+  erode_kw: 9
+  page_bottom_cutoff: 0.9
+
+paragraph_detector:
+  reading_order_band_k: 3.0

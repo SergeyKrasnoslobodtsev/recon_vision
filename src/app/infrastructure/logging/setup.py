@@ -17,4 +17,16 @@ def configure_logging(level: int) -> None:
         level: Уровень логирования из модуля logging.
     """
     logging.basicConfig(handlers=[InterceptHandler(level=level)], level=level)
-    logger.configure(handlers=[{"sink": sys.stderr, "level": level}])
+    logger.configure(
+        handlers=[
+            {"sink": sys.stderr, "level": level},
+            {
+                "sink": "./logs/app_{time:YYYY-MM-DD}.log",
+                "level": level,
+                "rotation": "00:00",  # новый файл каждый день
+                "retention": "30 days",  # хранить 30 дней
+                "compression": "zip",  # сжимать старые
+                "encoding": "utf-8",
+            },
+        ]
+    )

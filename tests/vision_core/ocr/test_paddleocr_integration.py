@@ -1,10 +1,12 @@
-import pytest
-import numpy as np
 from pathlib import Path
 
-from vision_core.ocr.paddle_ocr import PaddleOcrEngine
-from vision_core.config import VisionCoreConfig
+import numpy as np
+import pytest
+from cv2 import Mat
+from cv2.typing import NumPyArrayNumeric
 
+from vision_core.config import VisionCoreConfig
+from vision_core.ocr.paddle_ocr import PaddleOcrEngine
 
 pytestmark = pytest.mark.integration  # Маркер для запуска только integration тестов
 
@@ -22,10 +24,7 @@ def real_config():
     rec_path = Path(config.paddleocr.text_recognition_model_dir)
 
     if not det_path.exists() or not rec_path.exists():
-        pytest.skip(
-            f"Модели PaddleOCR не найдены: "
-            f"detection={det_path.exists()}, recognition={rec_path.exists()}"
-        )
+        pytest.skip(f"Модели PaddleOCR не найдены: detection={det_path.exists()}, recognition={rec_path.exists()}")
 
     return config
 
@@ -34,9 +33,7 @@ def real_config():
 def sample_image():
     """Создаёт тестовое изображение с текстом или загружает из файла."""
     # Вариант 1: Загрузить реальное изображение из test_data/
-    test_image_path = (
-        Path(__file__).parent.parent.parent / "test_data" / "sample_text.png"
-    )
+    test_image_path = Path(__file__).parent.parent.parent / "test_data" / "sample_text.png"
 
     if test_image_path.exists():
         import cv2
@@ -50,7 +47,7 @@ def sample_image():
     return image
 
 
-def test_paddleocr_engine_initializes_with_real_models(real_config):
+def test_paddleocr_engine_initializes_with_real_models(real_config: VisionCoreConfig):
     """Проверяет инициализацию PaddleOCR с реальными моделями.
 
     Тест гарантирует, что:
@@ -65,7 +62,10 @@ def test_paddleocr_engine_initializes_with_real_models(real_config):
     assert engine.cfg == real_config.paddleocr
 
 
-def test_paddleocr_engine_recognizes_text_on_real_image(real_config, sample_image):
+def test_paddleocr_engine_recognizes_text_on_real_image(
+    real_config: VisionCoreConfig,
+    sample_image: Mat | NumPyArrayNumeric | np.ndarray[tuple[int, int, int], np.dtype[np.unsignedinteger[np._8Bit]]],
+):
     """Проверяет распознавание текста на реальном изображении.
 
     Тест гарантирует:
@@ -102,7 +102,10 @@ def test_paddleocr_engine_recognizes_text_on_real_image(real_config, sample_imag
         assert x_min >= 0 and y_min >= 0
 
 
-def test_paddleocr_engine_predict_iter_yields_results(real_config, sample_image):
+def test_paddleocr_engine_predict_iter_yields_results(
+    real_config: VisionCoreConfig,
+    sample_image: Mat | NumPyArrayNumeric | np.ndarray[tuple[int, int, int], np.dtype[np.unsignedinteger[np._8Bit]]],
+):
     """Проверяет итеративный режим распознавания.
 
     Тест гарантирует:
@@ -124,7 +127,7 @@ def test_paddleocr_engine_predict_iter_yields_results(real_config, sample_image)
         # Каждый элемент batch — OcrResult
 
 
-def test_paddleocr_engine_handles_empty_image(real_config):
+def test_paddleocr_engine_handles_empty_image(real_config: VisionCoreConfig):
     """Проверяет обработку пустого/чёрного изображения.
 
     Тест гарантирует:
@@ -144,7 +147,7 @@ def test_paddleocr_engine_handles_empty_image(real_config):
     assert isinstance(results[0], list)
 
 
-def test_paddleocr_engine_raises_on_invalid_model_paths(tmp_path):
+def test_paddleocr_engine_raises_on_invalid_model_paths(tmp_path: Path):
     """Проверяет поведение при несуществующих путях к моделям.
 
     Тест гарантирует:

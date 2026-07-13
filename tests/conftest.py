@@ -1,33 +1,24 @@
-import sys
-import pytest
-import shutil
 import os
+import shutil
+import sys
 import tempfile
 from pathlib import Path
 
+import pytest
 from _pytest.logging import LogCaptureFixture
 from loguru import logger
 
+from app.domain.entities.reconciliation_data import ReconciliationData
+from app.domain.value_objects.period import Period
+from app.infrastructure.persistence.diskcache_process_repository import (
+    DiskCacheProcessRepository,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SRC_DIR = PROJECT_ROOT / "src"
 
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
-
-from app.infrastructure.persistence.diskcache_process_repository import (
-    DiskCacheProcessRepository,
-)
-from app.domain.entities.reconciliation_data import ReconciliationData
-from app.domain.value_objects.period import Period
-
-from vision_core.preprocessor.table_preprocessor import TablePreprocessor
-from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
-from vision_core.preprocessor.paragraph_preprocessor import ParagraphPreprocessor
-from vision_core.detector.table_detector import TableDetector
-from vision_core.detector.table_cell_detector import TableCellDetector
-from vision_core.detector.paragraph_detector import ParagraphDetector
-from vision_core.analizer.page_analyzer import PageAnalyzer
 
 ### Logger configuration
 
@@ -106,78 +97,21 @@ def sample_reconciliation_data() -> ReconciliationData:
     )
 
 
-### Common pdf file and output directory fixtures
+### PDF fixtures
+
+_PDF_DIR = Path("./examples/test/bag_15062026")
+_pdf_files = sorted(_PDF_DIR.glob("*.pdf")) if _PDF_DIR.exists() else []
+
+
+@pytest.fixture(params=_pdf_files, ids=lambda p: p.stem)
+def pdf_file(request) -> Path:
+    """Один PDF-файл из тестовой папки. Каждый файл — отдельный тест-кейс."""
+    return request.param
 
 
 @pytest.fixture
-def pdf_path() -> Path:
-    """Путь к папке с тестовыми PDF"""
-    return Path("./examples/test")
-
-
-@pytest.fixture
-def output_dir() -> Path:
-    """Путь к папке для сохранения результатов"""
-    output_dir = Path("./examples/output")
+def output_dir(pdf_file: Path) -> Path:
+    """Путь к папке для сохранения результатов (подпапка по имени файла)"""
+    output_dir = Path("./examples/output") / pdf_file.stem
     output_dir.mkdir(parents=True, exist_ok=True)
     return output_dir
-
-
-@pytest.fixture
-def pdf_loader_single_page():
-    """Фикстура-фабрика для получения изображения первой страницы из PDF-байтов"""
-    from vision_core.loader.pdf_loader import PDFLoader
-
-    def _loader(pdf_bytes):
-        with PDFLoader(pdf_bytes) as loader:
-            return loader.get_page_image(0, dpi=200)
-
-    return _loader
-
-
-### Preprocessors
-
-
-@pytest.fixture
-def preprocessor_img() -> ImagePreprocessor:
-    """Экземпляр ImagePreprocessor"""
-    return ImagePreprocessor()
-
-
-@pytest.fixture
-def preprocessor_table() -> TablePreprocessor:
-    """Экземпляр TablePreprocessor"""
-    return TablePreprocessor()
-
-
-@pytest.fixture
-def preprocessor_paragraph() -> ParagraphPreprocessor:
-    """Экземпляр ParagraphPreprocessor"""
-    return ParagraphPreprocessor()
-
-
-### Detectors
-
-
-@pytest.fixture
-def table_detector() -> TableDetector:
-    """Экземпляр TableDetector"""
-    return TableDetector()
-
-
-@pytest.fixture
-def cell_detector() -> TableCellDetector:
-    """Экземпляр TableCellDetector"""
-    return TableCellDetector()
-
-
-@pytest.fixture
-def paragraph_detector() -> ParagraphDetector:
-    """Экземпляр ParagraphDetector"""
-    return ParagraphDetector()
-
-
-@pytest.fixture
-def page_analyzer() -> PageAnalyzer:
-    """Экземпляр PageAnalyzer"""
-    return PageAnalyzer()

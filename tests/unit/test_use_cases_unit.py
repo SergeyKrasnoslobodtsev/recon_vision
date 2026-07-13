@@ -1,4 +1,5 @@
 import base64
+from dataclasses import replace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -11,37 +12,37 @@ from app.application.errors import (
     ProcessNotFoundError,
     ProcessNotReadyError,
 )
-from app.application.use_cases.fill_reconciliation_act import FillReconciliationActUseCase
+from app.application.ports.document_processing_worker import (
+    DocumentProcessingWorker,
+)
+from app.application.use_cases.fill_reconciliation_act import (
+    FillReconciliationActUseCase,
+)
 from app.application.use_cases.get_process_status import GetProcessStatusUseCase
 from app.application.use_cases.submit_reconciliation_act import (
     SubmitReconciliationActUseCase,
 )
+from app.domain.entities.ledger_entry import LedgerEntry, RowReference
 from app.domain.entities.process import ProcessState
+from app.domain.entities.reconciliation_data import ReconciliationData
 from app.domain.enums.process_status import ProcessStatus
+from app.domain.value_objects.period import Period
 
 
 class TestSubmitReconciliationActUseCase:
     @pytest.mark.asyncio
-    async def test_execute_creates_process_and_completes_it(
+    async def test_execute_creates_process_and_starts_background_processing(
         self,
         sample_pdf_bytes,
-        sample_reconciliation_data,
     ):
-        document_payload = {"document": "payload"}
         process_repository = AsyncMock()
         process_repository.add.return_value = "process-123"
-        document_builder = AsyncMock()
-        document_builder.build.return_value = document_payload
-        structured_data_extractor = AsyncMock()
-        structured_data_extractor.extract.return_value = sample_reconciliation_data
+        document_processing_worker: DocumentProcessingWorker = AsyncMock()
         use_case = SubmitReconciliationActUseCase(
             process_repository=process_repository,
-            document_builder=document_builder,
-            structured_data_extractor=structured_data_extractor,
+            document_processing_worker=document_processing_worker,
         )
-        command = SubmitReconciliationActCommand(
-            document_base64=base64.b64encode(sample_pdf_bytes).decode("utf-8")
-        )
+        command = SubmitReconciliationActCommand(document_base64=base64.b64encode(sample_pdf_bytes).decode("utf-8"))
 
         result = await use_case.execute(command)
 
@@ -50,31 +51,21 @@ class TestSubmitReconciliationActUseCase:
         stored_process = process_repository.add.await_args.args[0]
         assert isinstance(stored_process, ProcessState)
         assert stored_process.source_pdf == sample_pdf_bytes
-        document_builder.build.assert_awaited_once_with(sample_pdf_bytes)
-        structured_data_extractor.extract.assert_awaited_once_with(document_payload)
-        assert process_repository.update.await_count == 2
+        document_processing_worker.start.assert_awaited_once_with("process-123")
+        assert process_repository.update.await_count == 1
 
         processing_state = process_repository.update.await_args_list[0].args[0]
         assert processing_state.process_id == "process-123"
-        assert processing_state.status == ProcessStatus.COMPLETED
-        assert processing_state.message == "Документ успешно обработан"
-        assert processing_state.document_payload == document_payload
-        assert (
-            processing_state.reconciliation_data == sample_reconciliation_data
-        )
-
-        completed_state = process_repository.update.await_args_list[1].args[0]
-        assert completed_state is processing_state
+        assert processing_state.status == ProcessStatus.PROCESSING
+        assert processing_state.message == "Документ принят в обработку"
 
     @pytest.mark.asyncio
     async def test_execute_raises_on_invalid_base64(self):
         process_repository = AsyncMock()
-        document_builder = AsyncMock()
-        structured_data_extractor = AsyncMock()
+        document_processing_worker: DocumentProcessingWorker = AsyncMock()
         use_case = SubmitReconciliationActUseCase(
             process_repository=process_repository,
-            document_builder=document_builder,
-            structured_data_extractor=structured_data_extractor,
+            document_processing_worker=document_processing_worker,
         )
 
         with pytest.raises(ValueError, match="Не удалось декодировать PDF из base64"):
@@ -82,36 +73,30 @@ class TestSubmitReconciliationActUseCase:
 
         process_repository.add.assert_not_called()
         process_repository.update.assert_not_called()
-        document_builder.build.assert_not_called()
-        structured_data_extractor.extract.assert_not_called()
+        document_processing_worker.start.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_execute_marks_process_failed_when_builder_crashes(
+    async def test_execute_marks_process_failed_when_worker_start_crashes(
         self,
         sample_pdf_bytes,
     ):
         process_repository = AsyncMock()
         process_repository.add.return_value = "process-123"
-        document_builder = AsyncMock()
-        document_builder.build.side_effect = RuntimeError("builder crashed")
-        structured_data_extractor = AsyncMock()
+        document_processing_worker: DocumentProcessingWorker = AsyncMock()
+        document_processing_worker.start.side_effect = RuntimeError("worker crashed")
         use_case = SubmitReconciliationActUseCase(
             process_repository=process_repository,
-            document_builder=document_builder,
-            structured_data_extractor=structured_data_extractor,
+            document_processing_worker=document_processing_worker,
         )
-        command = SubmitReconciliationActCommand(
-            document_base64=base64.b64encode(sample_pdf_bytes).decode("utf-8")
-        )
+        command = SubmitReconciliationActCommand(document_base64=base64.b64encode(sample_pdf_bytes).decode("utf-8"))
 
-        with pytest.raises(RuntimeError, match="builder crashed"):
+        with pytest.raises(RuntimeError, match="worker crashed"):
             await use_case.execute(command)
 
         assert process_repository.update.await_count == 2
         failed_state = process_repository.update.await_args_list[-1].args[0]
         assert failed_state.status == ProcessStatus.FAILED
-        assert failed_state.message == "builder crashed"
-        structured_data_extractor.extract.assert_not_called()
+        assert failed_state.message == "worker crashed"
 
 
 class TestGetProcessStatusUseCase:
@@ -122,9 +107,7 @@ class TestGetProcessStatusUseCase:
         process_repository.get.return_value = process_state
         use_case = GetProcessStatusUseCase(process_repository=process_repository)
 
-        result = await use_case.execute(
-            GetProcessStatusCommand(process_id="process-123")
-        )
+        result = await use_case.execute(GetProcessStatusCommand(process_id="process-123"))
 
         assert result.process_state is process_state
         process_repository.get.assert_awaited_once_with("process-123")
@@ -146,6 +129,20 @@ class TestFillReconciliationActUseCase:
             process_id="process-123",
             status=ProcessStatus.COMPLETED,
             source_pdf=sample_pdf_bytes,
+            reconciliation_data=ReconciliationData(
+                seller="",
+                buyer="",
+                period=Period(start=None, end=None),
+                debit=[
+                    LedgerEntry(
+                        record="Реализация",
+                        value=100.0,
+                        date="2025-01-15",
+                        row_reference=RowReference(id_table="table-1", id_row="row-2", id_col=2),
+                    )
+                ],
+                credit=[],
+            ),
         )
         filled_pdf = b"%PDF-1.4 filled content"
         process_repository = AsyncMock()
@@ -156,11 +153,27 @@ class TestFillReconciliationActUseCase:
             process_repository=process_repository,
             pdf_filler=pdf_filler,
         )
-        command = FillReconciliationActCommand(process_id="process-123")
+        command = FillReconciliationActCommand(
+            process_id="process-123",
+            debit=[
+                LedgerEntry(
+                    record="Реализация",
+                    value=125.0,
+                    date="2025-01-15",
+                    row_reference=RowReference(id_table="table-1", id_row="row-2"),
+                )
+            ],
+        )
 
         result = await use_case.execute(command)
 
-        pdf_filler.fill.assert_awaited_once_with(process_state, command)
+        pdf_filler.fill.assert_awaited_once()
+        filled_command = pdf_filler.fill.await_args.args[1]
+        assert filled_command.process_id == command.process_id
+        assert filled_command.debit[0] == replace(
+            command.debit[0],
+            row_reference=RowReference(id_table="table-1", id_row="row-2", id_col=2),
+        )
         process_repository.update.assert_awaited_once_with(process_state)
         assert process_state.status == ProcessStatus.FILLED
         assert process_state.message == "Документ успешно заполнен"

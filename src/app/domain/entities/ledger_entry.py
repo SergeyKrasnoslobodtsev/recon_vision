@@ -12,10 +12,14 @@ class RowReference:
     Attributes:
         id_table: Идентификатор таблицы в документе.
         id_row: Идентификатор строки в таблице.
+        id_col: Индекс целевой колонки в строке, если он определён.
+        buyer_col: Индекс колонки покупателя для записи в PDF, если он определён.
     """
 
     id_table: str
     id_row: str
+    id_col: int | None = None
+    buyer_col: int | None = None
 
 
 @dataclass(slots=True, frozen=True)

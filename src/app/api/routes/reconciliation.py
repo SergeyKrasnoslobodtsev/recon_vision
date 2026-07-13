@@ -10,8 +10,11 @@ from app.api.dependencies import (
     get_submit_reconciliation_act_use_case,
 )
 from app.api.schemas.act_entry import ActEntryRequest, ActEntryResponse, RowId
-from app.api.schemas.process_status import ProcessIdResponse, StatusResponse
-from app.api.schemas.process_status import GetProcessStatusRequest
+from app.api.schemas.process_status import (
+    GetProcessStatusRequest,
+    ProcessIdResponse,
+    StatusResponse,
+)
 from app.api.schemas.reconciliation import (
     FillReconciliationActRequest,
     PeriodResponse,
@@ -26,7 +29,9 @@ from app.application.errors import (
     ProcessNotFoundError,
     ProcessNotReadyError,
 )
-from app.application.use_cases.fill_reconciliation_act import FillReconciliationActUseCase
+from app.application.use_cases.fill_reconciliation_act import (
+    FillReconciliationActUseCase,
+)
 from app.application.use_cases.get_process_status import GetProcessStatusUseCase
 from app.application.use_cases.submit_reconciliation_act import (
     SubmitReconciliationActUseCase,
@@ -48,6 +53,8 @@ def _to_domain_entry(entry: ActEntryRequest) -> LedgerEntry:
         row_reference=RowReference(
             id_table=entry.row_id.id_table,
             id_row=entry.row_id.id_row,
+            id_col=entry.row_id.id_col,
+            buyer_col=entry.row_id.buyer_col,
         ),
     )
 
@@ -59,6 +66,8 @@ def _to_transport_entry(entry: LedgerEntry) -> ActEntryResponse:
         row_id=RowId(
             id_row=row_reference.id_row,
             id_table=row_reference.id_table,
+            id_col=row_reference.id_col,
+            buyer_col=row_reference.buyer_col,
         ),
         record=entry.record,
         value=entry.value,
@@ -92,9 +101,9 @@ def _processing_response() -> JSONResponse:
     return JSONResponse(status_code=status.HTTP_201_CREATED, content=payload.model_dump())
 
 
-def _not_found_response() -> JSONResponse:
+def _not_found_response(process_id: str) -> JSONResponse:
     """Возвращает API-ответ для отсутствующего процесса."""
-    payload = StatusResponse(status=-1, message="not found")
+    payload = StatusResponse(status=-1, message=f"Процесс {process_id} не существует")
     return JSONResponse(status_code=status.HTTP_404_NOT_FOUND, content=payload.model_dump())
 
 
@@ -118,20 +127,17 @@ def _failed_response(message: str) -> JSONResponse:
 )
 async def send_reconciliation_act(
     request: ReconciliationAct,
-    use_case: SubmitReconciliationActUseCase = Depends(
-        get_submit_reconciliation_act_use_case
-    ),
+    use_case: SubmitReconciliationActUseCase = Depends(get_submit_reconciliation_act_use_case),
 ):
     """Принимает акт сверки на обработку.
 
     Args:
         request: Тело запроса с исходным PDF.
     """
-    logger.info("Sending reconciliation act...")
+    logger.info("Начинаем обработку акта сверки...")
     try:
-        result = await use_case.execute(
-            SubmitReconciliationActCommand(document_base64=request.document)
-        )
+        result = await use_case.execute(SubmitReconciliationActCommand(document_base64=request.document))
+        logger.info(f"Акт сверки принят, process_id={result.process_id}")
         return ProcessIdResponse(process_id=result.process_id)
     except ValueError as exc:
         payload = StatusResponse(status=-2, message=str(exc))
@@ -142,7 +148,6 @@ async def send_reconciliation_act(
     except Exception as exc:
         logger.exception("Ошибка отправки акта сверки")
         return _failed_response(str(exc))
-
 
 
 @router.post(
@@ -159,15 +164,13 @@ async def get_process_status(
     use_case: GetProcessStatusUseCase = Depends(get_process_status_use_case),
 ):
     """Возвращает статус процесса обработки акта сверки."""
-    logger.info("Getting process status...")
+    logger.info(f"Получение статуса процесса для процесса {request.process_id}...")
     try:
-        result = await use_case.execute(
-            GetProcessStatusCommand(process_id=request.process_id)
-        )
+        result = await use_case.execute(GetProcessStatusCommand(process_id=request.process_id))
     except ProcessNotFoundError:
-        return _not_found_response()
+        return _not_found_response(request.process_id)
     except Exception as exc:
-        logger.exception("Ошибка чтения статуса процесса")
+        logger.exception(f"Ошибка чтения статуса процесса для процесса {request.process_id}")
         return _failed_response(str(exc))
 
     process_state = result.process_state
@@ -198,16 +201,14 @@ async def get_process_status(
 )
 async def fill_reconciliation_act(
     request: FillReconciliationActRequest,
-    use_case: FillReconciliationActUseCase = Depends(
-        get_fill_reconciliation_act_use_case
-    ),
+    use_case: FillReconciliationActUseCase = Depends(get_fill_reconciliation_act_use_case),
 ):
     """Принимает команду на заполнение акта сверки.
 
     Args:
         request: Данные заполнения акта сверки.
     """
-    logger.info("Filling reconciliation act...")
+    logger.info(f"Начинаем заполнение акта сверки для процесса {request.process_id}...")
     try:
         result = await use_case.execute(
             FillReconciliationActCommand(
@@ -219,13 +220,17 @@ async def fill_reconciliation_act(
         )
         return ReconciliationAct(document=result.document_base64)
     except ProcessNotFoundError:
-        return _not_found_response()
+        logger.warning(f"Процесс {request.process_id} не найден при попытке заполнить акт сверки")
+        return _not_found_response(request.process_id)
     except ProcessNotReadyError:
+        logger.warning(f"Процесс {request.process_id} ещё не готов для заполнения акта сверки")
         return _processing_response()
     except ProcessFailedError as exc:
+        logger.warning(f"Процесс {request.process_id} завершился с ошибкой: {exc}")
         return _failed_response(str(exc))
     except ValueError as exc:
+        logger.warning(f"Ошибка в данных для заполнения акта сверки: {exc}")
         return _failed_response(str(exc))
     except Exception as exc:
-        logger.exception("Ошибка заполнения акта сверки")
+        logger.exception(f"Ошибка заполнения акта сверки для процесса {request.process_id}")
         return _failed_response(str(exc))

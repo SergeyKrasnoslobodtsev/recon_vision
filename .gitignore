@@ -3,6 +3,10 @@ data/*
 examples/
 models/
 .github/
+.claude/
+.continue/
+assets/
+packages/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -55,6 +59,7 @@ coverage.xml
 
 # Django stuff:
 *.log
+*.zip
 
 # Sphinx documentation
 docs/_build/

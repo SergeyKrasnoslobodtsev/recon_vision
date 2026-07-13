@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Optional
+import asyncio
 
+from app.infrastructure.config.settings import AppSettings
+from vision_core.config import VisionCoreConfig
 from vision_core.pipelines.build_document import DocumentBuildPipeline
 
 
@@ -14,8 +16,9 @@ class VisionDocumentBuilder:
     на старте приложения без необходимости.
     """
 
-    def __init__(self):
-        self._pipeline: Optional[DocumentBuildPipeline] = None
+    def __init__(self, settings: AppSettings):
+        self._settings = settings
+        self._pipeline: DocumentBuildPipeline | None = None
 
     async def build(self, pdf_bytes: bytes):
         """Строит канонический документ из PDF.
@@ -27,10 +30,11 @@ class VisionDocumentBuilder:
             Document: Каноническое представление документа.
         """
         pipeline = self._get_pipeline()
-        return pipeline.build(pdf_bytes)
+        return await asyncio.to_thread(pipeline.build, pdf_bytes)
 
     def _get_pipeline(self) -> DocumentBuildPipeline:
         """Возвращает и при необходимости создаёт pipeline построения документа."""
         if self._pipeline is None:
-            self._pipeline = DocumentBuildPipeline()
+            config = VisionCoreConfig.from_yaml(self._settings.vision_core_config_path)
+            self._pipeline = DocumentBuildPipeline(config=config)
         return self._pipeline

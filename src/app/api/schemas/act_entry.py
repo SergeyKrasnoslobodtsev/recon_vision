@@ -10,6 +10,8 @@ class RowId(BaseModel):
 
     id_row: str = Field(..., description="Идентификатор строки")
     id_table: str = Field(..., description="Идентификатор таблицы")
+    id_col: int | None = Field(None, description="Индекс целевой колонки")
+    buyer_col: int | None = Field(None, description="Индекс колонки покупателя")
 
 
 class ActEntryRequest(BaseModel):

@@ -8,9 +8,10 @@ from app.application.dto.submit_reconciliation_act import (
     SubmitReconciliationActCommand,
     SubmitReconciliationActResult,
 )
-from app.application.ports.document_builder import DocumentBuilder
+from app.application.ports.document_processing_worker import (
+    DocumentProcessingWorker,
+)
 from app.application.ports.process_repository import ProcessRepository
-from app.application.ports.structured_data_extractor import StructuredDataExtractor
 from app.domain.entities.process import ProcessState
 
 
@@ -20,18 +21,16 @@ class SubmitReconciliationActUseCase:
     def __init__(
         self,
         process_repository: ProcessRepository,
-        document_builder: DocumentBuilder,
-        structured_data_extractor: StructuredDataExtractor,
+        document_processing_worker: DocumentProcessingWorker,
     ):
         self.process_repository = process_repository
-        self.document_builder = document_builder
-        self.structured_data_extractor = structured_data_extractor
+        self.document_processing_worker = document_processing_worker
 
     async def execute(
         self,
         command: SubmitReconciliationActCommand,
     ) -> SubmitReconciliationActResult:
-        """Создаёт процесс, строит документ и извлекает данные.
+        """Создаёт процесс и запускает его фоновую обработку.
 
         Args:
             command: Команда отправки PDF на обработку.
@@ -54,17 +53,7 @@ class SubmitReconciliationActUseCase:
         await self.process_repository.update(process_state)
 
         try:
-            document_payload = await self.document_builder.build(pdf_bytes)
-            reconciliation_data = await self.structured_data_extractor.extract(
-                document_payload
-            )
-
-            process_state.document_payload = document_payload
-            process_state.mark_completed(
-                reconciliation_data,
-                message="Документ успешно обработан",
-            )
-            await self.process_repository.update(process_state)
+            await self.document_processing_worker.start(process_id)
         except Exception as exc:
             process_state.mark_failed(str(exc))
             await self.process_repository.update(process_state)

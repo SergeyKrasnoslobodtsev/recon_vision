@@ -1,26 +1,42 @@
+"""Модуль для препроцессинга изображений с адаптивной обработкой.
+Этот модуль включает в себя класс ImagePreprocessor, который применяет нечеткую маску
+к изображению для улучшения его качества перед дальнейшей обработкой. Параметры маски
+настраиваются через конфигурацию ImagePreprocessorConfig, что позволяет адаптировать
+препроцессинг к различным типам изображений и условиям съемки.
+"""
+
+from __future__ import annotations
+
 import numpy as np
-from vision_core.preprocessor.image_analyzer import ImageAnalyzer
-from vision_core.preprocessor.image_enhancer import ImageEnhancer
+
+from vision_core.config import ImagePreprocessorConfig
+from vision_core.utils import image_utils
 
 
 class ImagePreprocessor:
     """Препроцессинг изображений с адаптивной обработкой"""
 
-    def __init__(self):
-        self.analyzer = ImageAnalyzer()
-        self.enhancer = ImageEnhancer()
+    def __init__(
+        self,
+        config: ImagePreprocessorConfig | None = None,
+        debug_image=None,
+    ):
+        self.cfg = config or ImagePreprocessorConfig()
+        self._debug = debug_image
 
-    def process(self, image: np.ndarray) -> np.ndarray:
-        """
-        Анализирует и улучшает изображение
+    def process(self, image: np.ndarray, *, page_number: int = 0) -> np.ndarray:
+        """Применяет нечеткую маску к изображению для улучшения его качества."""
+        if self._debug:
+            self._debug.on_debug_image(src_image=image, stage="1_original", prefix="page", page_number=page_number)
 
-        Returns:
-            enhanced_image: Улучшенное изображение
-        """
-        # 1. Анализ
-        metrics = self.analyzer.analyze(image)
+        result = image_utils.unsharp_mask(
+            image,
+            kernel_size=(self.cfg.kernel, self.cfg.kernel),
+            sigma=self.cfg.sigma,
+            amount=self.cfg.amount,
+        )
 
-        # 2. Обработка
-        enhanced = self.enhancer.enhance(image, metrics)
+        if self._debug:
+            self._debug.on_debug_image(src_image=result, stage="2_preprocessed", prefix="page", page_number=page_number)
 
-        return enhanced
+        return result

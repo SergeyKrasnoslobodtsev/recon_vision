@@ -1,9 +1,7 @@
-import pymupdf
 import numpy as np
-from PIL import Image
-import cv2
+import pymupdf
 
-from vision_core.preprocessor.image_preprocessor import ImagePreprocessor
+from vision_core.exceptions import PdfLoadError
 
 
 class PDFLoader:
@@ -17,8 +15,18 @@ class PDFLoader:
             pdf_bytes: PDF документ в байтах
         """
         self.pdf_bytes = pdf_bytes
+        try:
+            self.doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+        except Exception as e:
+            raise PdfLoadError(details=str(e)) from e
+        """
+        Инициализация загрузчика
+
+        Args:
+            pdf_bytes: PDF документ в байтах
+        """
+        self.pdf_bytes = pdf_bytes
         self.doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
-        self.preprocessor = ImagePreprocessor()
 
     @property
     def num_pages(self) -> int:
@@ -34,35 +42,16 @@ class PDFLoader:
             dpi: Разрешение (300 для OCR, 150 для быстрого просмотра)
 
         Returns:
-            numpy.ndarray: BGR изображение для OpenCV
+            numpy.ndarray: RGB изображение для OpenCV
         """
         page = self.doc[page_num]
 
         pix = page.get_pixmap(dpi=dpi, alpha=False)
 
         # Конвертируем в numpy array (RGB)
-        img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        img_np = np.array(img)
+        img = pix.pil_image()
 
-        img_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-
-        return img_bgr
-
-    def get_page_image_preprocessed(self, page_num: int, dpi: int = 300) -> np.ndarray:
-        """
-        Рендерит страницу PDF в изображение с препроцессингом
-
-        Args:
-            page_num: Номер страницы (0-indexed)
-            dpi: Разрешение (300 для OCR, 150 для быстрого просмотра)
-
-        Returns:
-            numpy.ndarray: Препроцессированное BGR изображение для OpenCV
-        """
-        image = self.get_page_image(page_num, dpi=dpi)
-        processed_image = self.preprocessor.process(image)
-
-        return processed_image
+        return np.array(img)
 
     def get_page_size(self, page_num: int) -> tuple[float, float]:
         """

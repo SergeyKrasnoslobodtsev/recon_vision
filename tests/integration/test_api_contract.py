@@ -53,7 +53,7 @@ class TestSendReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/send_reconciliation_act",
+                "/send_reconciliation_act",
             json={"document": "cGRm"},
         )
 
@@ -70,7 +70,7 @@ class TestSendReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/send_reconciliation_act",
+                "/send_reconciliation_act",
             json={"document": "!!!"},
         )
 
@@ -94,7 +94,7 @@ class TestProcessStatusContract:
         )
 
         response = client.post(
-            "/api/v1/process_status",
+                "/process_status",
             json={"process_id": "process-123"},
         )
 
@@ -109,7 +109,7 @@ class TestProcessStatusContract:
         )
 
         response = client.post(
-            "/api/v1/process_status",
+                "/process_status",
             json={"process_id": "missing"},
         )
 
@@ -129,7 +129,7 @@ class TestProcessStatusContract:
         )
 
         response = client.post(
-            "/api/v1/process_status",
+                "/process_status",
             json={"process_id": "process-123"},
         )
 
@@ -173,7 +173,7 @@ class TestProcessStatusContract:
         )
 
         response = client.post(
-            "/api/v1/process_status",
+                "/process_status",
             json={"process_id": "process-123"},
         )
 
@@ -213,7 +213,7 @@ class TestFillReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/fill_reconciliation_act",
+                "/fill_reconciliation_act",
             json={
                 "process_id": "process-123",
                 "comments": "Комментарий к акту",
@@ -248,7 +248,7 @@ class TestFillReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/fill_reconciliation_act",
+                "/fill_reconciliation_act",
             json={"process_id": "process-123", "debit": [], "credit": []},
         )
 
@@ -263,7 +263,7 @@ class TestFillReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/fill_reconciliation_act",
+                "/fill_reconciliation_act",
             json={"process_id": "missing", "debit": [], "credit": []},
         )
 
@@ -278,7 +278,7 @@ class TestFillReconciliationActContract:
         )
 
         response = client.post(
-            "/api/v1/fill_reconciliation_act",
+                "/fill_reconciliation_act",
             json={"process_id": "process-123", "debit": [], "credit": []},
         )
 
