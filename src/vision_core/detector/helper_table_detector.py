@@ -265,6 +265,104 @@ def extract_raw_horizontal_lines(
     return h_raw_lines
 
 
+def extract_line_axes_from_mask(
+    line_mask: np.ndarray,
+    axis: LineAxis,
+    min_coverage: int = 20,
+    axis_gap: int = 3,
+    segment_gap: int = 8,
+    min_len: int = 10,
+) -> list[tuple[int, SegmentsArray]]:
+    """Extract table-line axes directly from a morphology mask.
+
+    This projection-based extractor is deliberately less brittle than Hough for
+    scanned reconciliation acts: lines may be slightly broken by stamps, JPEG
+    artefacts, low contrast, or text touching borders.  The function first
+    finds rows/columns with enough foreground pixels, merges close axes, and
+    then collects continuous foreground runs on each merged axis.
+
+    Args:
+        line_mask: Binary mask containing either horizontal or vertical lines.
+        axis: ``LineAxis.Y`` for horizontal lines, ``LineAxis.X`` for vertical.
+        min_coverage: Minimal number of foreground pixels on an axis.
+        axis_gap: Maximal distance between neighbouring foreground axes.
+        segment_gap: Maximal gap between line fragments on one axis.
+        min_len: Minimal segment length to keep.
+
+    Returns:
+        A list of ``(axis_coordinate, segments)`` where segments are intervals
+        on the perpendicular axis.
+    """
+    mask = (np.asarray(line_mask) > 0).astype(np.uint8)
+    if mask.size == 0:
+        return []
+
+    projection_axis = 1 if axis is LineAxis.Y else 0
+    projection = np.count_nonzero(mask, axis=projection_axis)
+    coords = np.flatnonzero(projection >= max(1, min_coverage)).astype(np.int32)
+    if coords.size == 0:
+        return []
+
+    split_idx = np.flatnonzero(np.diff(coords) > axis_gap) + 1
+    groups = np.split(coords, split_idx)
+    out: list[tuple[int, SegmentsArray]] = []
+
+    for group in groups:
+        if group.size == 0:
+            continue
+        axis_value = int(np.median(group))
+        if axis is LineAxis.Y:
+            band = mask[int(group[0]) : int(group[-1]) + 1, :]
+            occupied = np.flatnonzero(np.any(band > 0, axis=0)).astype(np.int32)
+        else:
+            band = mask[:, int(group[0]) : int(group[-1]) + 1]
+            occupied = np.flatnonzero(np.any(band > 0, axis=1)).astype(np.int32)
+
+        if occupied.size == 0:
+            continue
+
+        seg_split_idx = np.flatnonzero(np.diff(occupied) > segment_gap) + 1
+        seg_groups = np.split(occupied, seg_split_idx)
+        raw_segments = np.array(
+            [(int(seg[0]), int(seg[-1]) + 1) for seg in seg_groups if seg.size > 0],
+            dtype=np.int32,
+        )
+        segments = _normalize_segments(raw_segments, merge_gap=segment_gap, min_len=min_len)
+        if segments.size > 0:
+            out.append((axis_value, segments))
+
+    return out
+
+
+def merge_line_sets(
+    primary: list[tuple[int, SegmentsArray]],
+    secondary: list[tuple[int, SegmentsArray]],
+    axis_tol: int = 5,
+    merge_gap: int = 8,
+    min_len: int = 10,
+) -> list[tuple[int, SegmentsArray]]:
+    """Merge two line detections for the same orientation.
+
+    Hough gives precise long segments on clean documents, while mask projection
+    preserves faint or fragmented separators.  Combining both improves table
+    structure recovery without changing the public ``Table``/``Cell`` model.
+    """
+    all_lines = list(primary) + list(secondary)
+    if not all_lines:
+        return []
+
+    axes = _merge_close(np.array([axis for axis, _ in all_lines], dtype=np.int32), gap=axis_tol)
+    merged: list[tuple[int, SegmentsArray]] = []
+    for axis_value in axes:
+        segments = [segs for axis, segs in all_lines if abs(axis - int(axis_value)) <= axis_tol and segs.size > 0]
+        if not segments:
+            continue
+        normalized = _normalize_segments(np.vstack(segments), merge_gap=merge_gap, min_len=min_len)
+        if normalized.size > 0:
+            merged.append((int(axis_value), normalized))
+    return merged
+
+
 def extract_raw_tables(
     table_mask: np.ndarray,
     border_tol: int = 8,

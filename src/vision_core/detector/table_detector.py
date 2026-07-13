@@ -91,6 +91,9 @@ class TableDetector:
         for idx, bbox in enumerate(sorted(table_bboxes, key=lambda b: (b.y_min, b.x_min))):
             # Детектируем ячейки внутри таблицы
             roi_mask = bbox.roi(binary_image)
+            h_line_roi_mask = image_utils.compute_horizontal_line_mask(
+                roi_mask, scale=self.cfg.scale_horizontal_line, iterations=2
+            )
             h_raw_lines = table_helper.extract_raw_horizontal_lines(
                 roi_mask,
                 scale=self.cfg.scale_horizontal_line,
@@ -98,12 +101,27 @@ class TableDetector:
                 max_line_gap=max(1, int(bbox.width // self.cfg.max_line_gap_ratio)),
             )
 
-            h_lines = table_helper.extract_lines(
+            h_hough_lines = table_helper.extract_lines(
                 np.asarray(h_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.Y,
                 axis_tol=self.cfg.h_axis_tol,
                 merge_gap=self.cfg.h_merge_gap,
                 min_len=self.cfg.h_min_line_length,
+            )
+            h_projection_lines = table_helper.extract_line_axes_from_mask(
+                h_line_roi_mask,
+                table_helper.LineAxis.Y,
+                min_coverage=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
+                axis_gap=self.cfg.h_axis_tol,
+                segment_gap=max(self.cfg.h_merge_gap, int(bbox.width // self.cfg.max_line_gap_ratio)),
+                min_len=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
+            )
+            h_lines = table_helper.merge_line_sets(
+                h_hough_lines,
+                h_projection_lines,
+                axis_tol=self.cfg.h_axis_tol,
+                merge_gap=self.cfg.h_merge_gap,
+                min_len=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
             )
             logger.debug(f"Горизонтальных линий в таблице {idx}: {len(h_lines)}")
             if len(h_lines) == 0:
@@ -121,6 +139,7 @@ class TableDetector:
 
             logger.debug(f"Медианная высота строк в таблице {idx}: {median_height}")
 
+            v_line_roi_mask = image_utils.compute_vertical_line_mask(roi_mask, median_height=max(1, median_height))
             v_raw_lines = table_helper.extract_raw_vertical_lines(
                 roi_mask,
                 median_height=max(1, median_height),
@@ -128,12 +147,27 @@ class TableDetector:
                 max_line_gap=max(1, int(median_height * 0.8)),
             )
 
-            v_lines = table_helper.extract_lines(
+            v_hough_lines = table_helper.extract_lines(
                 np.asarray(v_raw_lines, dtype=np.int32),
                 table_helper.LineAxis.X,
                 axis_tol=self.cfg.v_axis_tol,
                 merge_gap=self.cfg.v_merge_gap,
                 min_len=median_height,
+            )
+            v_projection_lines = table_helper.extract_line_axes_from_mask(
+                v_line_roi_mask,
+                table_helper.LineAxis.X,
+                min_coverage=max(5, int(median_height * 0.6)),
+                axis_gap=self.cfg.v_axis_tol,
+                segment_gap=max(self.cfg.v_merge_gap, int(median_height * 0.8)),
+                min_len=max(5, int(median_height * 0.6)),
+            )
+            v_lines = table_helper.merge_line_sets(
+                v_hough_lines,
+                v_projection_lines,
+                axis_tol=self.cfg.v_axis_tol,
+                merge_gap=self.cfg.v_merge_gap,
+                min_len=max(5, int(median_height * 0.6)),
             )
             if len(v_lines) == 0:
                 logger.debug(f"Пропущена таблица {idx}: не найдено вертикальных линий")
