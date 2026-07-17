@@ -18,6 +18,26 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     return image.copy()
 
+def apply_gamma_correction(rgb: np.ndarray, gamma: float = 1.2):
+    def get_table(gamma):
+        inv = 1.0 / gamma
+        table = (np.linspace(0, 1, 256) ** inv) * 255.0
+        return table.astype("uint8")
+    table = get_table(gamma)
+    return cv2.LUT(rgb, table)
+
+def extract_lines_mask(bin_img: np.ndarray, v_scale: int = 10, h_scale: int = 40):
+    """Шаг 2: MORPH_OPEN длинными осевыми ядрами -> убираем текст, оставляем линии сетки."""
+    h, w = bin_img.shape
+
+    vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, h // 40))
+    horizontal_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (w // 10, 1))
+
+    h_opened = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, horizontal_kernel)
+    v_opened = cv2.morphologyEx(bin_img, cv2.MORPH_OPEN, vertical_kernel)
+
+    mask = cv2.bitwise_or(h_opened, v_opened)
+    return mask
 
 def unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.5, amount=1.0) -> np.ndarray:
     """Применяет unsharp masking для повышения резкости изображения.
@@ -58,6 +78,26 @@ def gamma_correction(image: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     lut = (np.arange(256) / 255) ** gamma * 255
     gamma_img = cv2.LUT(blur, lut.astype(np.uint8))
     return gamma_img
+
+def binary_masked(gray: np.ndarray, k_gauss: int = 5, block_size: int = 11, c: int = 2):
+    """_summary_
+
+    Args:
+        gray (np.ndarray): _description_
+        k_gauss (int, optional): _description_. Defaults to 5.
+        block_size (int, optional): _description_. Defaults to 11.
+        c (int, optional): _description_. Defaults to 2.
+
+    Returns:
+        _type_: _description_
+    """
+    blur = cv2.GaussianBlur(gray, (k_gauss, k_gauss), 0)
+
+    binary = cv2.adaptiveThreshold(
+        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV, block_size, c
+    )
+    return binary
 
 
 def binary_threshold(gray: np.ndarray, block_size: int = 15, C: int = 5) -> np.ndarray:
