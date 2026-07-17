@@ -149,7 +149,7 @@ class PaddleOcrConfig:
     use_doc_orientation_classify: bool = False
     use_doc_unwarping: bool = False
     use_textline_orientation: bool = False
-    device: str = "gpu"
+    device: str = "cpu"
 
 
 @dataclass
