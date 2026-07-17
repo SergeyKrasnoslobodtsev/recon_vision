@@ -18,13 +18,16 @@ def to_grayscale(image: np.ndarray) -> np.ndarray:
         return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
     return image.copy()
 
+
 def apply_gamma_correction(rgb: np.ndarray, gamma: float = 1.2):
     def get_table(gamma):
         inv = 1.0 / gamma
         table = (np.linspace(0, 1, 256) ** inv) * 255.0
         return table.astype("uint8")
+
     table = get_table(gamma)
     return cv2.LUT(rgb, table)
+
 
 def extract_lines_mask(bin_img: np.ndarray, v_scale: int = 10, h_scale: int = 40):
     """Шаг 2: MORPH_OPEN длинными осевыми ядрами -> убираем текст, оставляем линии сетки."""
@@ -38,6 +41,26 @@ def extract_lines_mask(bin_img: np.ndarray, v_scale: int = 10, h_scale: int = 40
 
     mask = cv2.bitwise_or(h_opened, v_opened)
     return mask
+
+
+def erase_lines(mask, lines, thickness=3):
+    mask_clean = mask.copy()
+    if lines.size == 0:
+        return mask_clean
+    pts = lines.reshape(-1, 2, 2)
+    cv2.polylines(mask_clean, list(pts), isClosed=False, color=0, thickness=thickness)
+    return mask_clean
+
+
+def repair_mask(mask, close_size=7):
+    """MORPH_CLOSE -> срастить микроразрывы."""
+    close_h = cv2.getStructuringElement(cv2.MORPH_RECT, (close_size, 1))
+    close_v = cv2.getStructuringElement(cv2.MORPH_RECT, (1, close_size))
+
+    mask_fixed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, close_h)
+    mask_fixed = cv2.morphologyEx(mask_fixed, cv2.MORPH_CLOSE, close_v)
+    return mask_fixed
+
 
 def unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.5, amount=1.0) -> np.ndarray:
     """Применяет unsharp masking для повышения резкости изображения.
@@ -79,6 +102,7 @@ def gamma_correction(image: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     gamma_img = cv2.LUT(blur, lut.astype(np.uint8))
     return gamma_img
 
+
 def binary_masked(gray: np.ndarray, k_gauss: int = 5, block_size: int = 11, c: int = 2):
     """_summary_
 
@@ -93,10 +117,7 @@ def binary_masked(gray: np.ndarray, k_gauss: int = 5, block_size: int = 11, c: i
     """
     blur = cv2.GaussianBlur(gray, (k_gauss, k_gauss), 0)
 
-    binary = cv2.adaptiveThreshold(
-        blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY_INV, block_size, c
-    )
+    binary = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block_size, c)
     return binary
 
 
