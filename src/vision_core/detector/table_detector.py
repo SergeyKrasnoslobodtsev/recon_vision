@@ -14,7 +14,6 @@ class TableDetector:
 
     def __init__(
         self,
-        preprocessor_config: TablePreprocessorConfig | None = None,
         table_detector_config: TableDetectorConfig | None = None,
         debug_image: DebugImageObserver | None = None,
     ):
@@ -29,195 +28,24 @@ class TableDetector:
             debug_image: Наблюдатель для отладки изображений. Если None, отладка отключена.
         """
         self.cfg = table_detector_config or TableDetectorConfig()
-        self.preprocessor = TablePreprocessor(preprocessor_config, debug_image)
         self._debug_image = debug_image
 
-    def _preprocess(self, image: np.ndarray, page_number: int = 0) -> np.ndarray:
-        """Создаёт маску таблиц для текущего изображения.
+        self._orig_shape = None
+        self._sharpness_img = None
+        self._binary_img = None
+        self._mask_raw_lines = None
 
-        Args:
-            image: Изображение страницы.
-            page_number: Номер страницы.
+    def _preprocess(self, image: np.ndarray, page_number: int = 0):
+        self._orig_shape = image.shape
+        self._sharpness_img = image_utils.apply_gamma_correction(image, gamma=0.3)
+        gray_img = image_utils.to_grayscale(self._sharpness_img)
+        self._binary_img = image_utils.binary_masked(gray_img, k_gauss=5, block_size=11, c=2)
+        self._mask_raw_lines = image_utils.extract_lines_mask(self._binary_img, v_scale=10, h_scale=40)
+        lines = geometry_utils.find_hough_lines(self._mask_raw_lines,
+                                                threshold=10,
+                                                min_line_length=int(self._orig_shape[0] * 0.1),
+                                                max_line_gap=30,
+                                                )
 
-        Returns:
-            mask (np.ndarray): Бинарная маска таблиц.
-        """
-        binary_image = self.preprocessor.process(image, page_number=page_number)
 
-        return binary_image
 
-    def detect_tables(self, image: np.ndarray, page_number: int = 0) -> list[Table]:
-        """Детектирует таблицы на изображении и извлекает их ячейки.
-        Args:
-            image: Изображение страницы.
-            page_number: Номер страницы.
-        Returns:
-            list[Table]: Список найденных таблиц с их ячейками.
-        """
-        # Создаем маску таблицы локально для текущего изображения.
-        binary_image = self._preprocess(image, page_number=page_number)
-        h_line_mask = image_utils.compute_horizontal_line_mask(binary_image, scale=self.cfg.scale_horizontal_line)
-        v_line_mask = image_utils.compute_vertical_line_mask(binary_image, median_height=self.cfg.height_vertical_line)
-        table_mask = image_utils.get_mask(h_line_mask, v_line_mask)
-
-        if self._debug_image:
-            self._debug_image.on_debug_image(
-                src_image=table_mask,
-                stage="4_table_preprocessor",
-                prefix="mask",
-                page_number=page_number,
-            )
-
-        # Извлекаем bounding boxes таблиц
-        table_bboxes = table_helper.extract_raw_tables(
-            table_mask,
-            border_tol=self.cfg.border_tol,
-            scale_width=self.cfg.scale_width,
-            scale_height=self.cfg.scale_height,
-            min_density=self.cfg.min_density,
-            intersection_over_min_thr=self.cfg.intersection_over_min_thr,
-        )
-        if self._debug_image:
-            self._debug_image.on_detected_boxes(
-                image=image,
-                boxes=[bbox.to_tuple() for bbox in table_bboxes],
-                stage="4_table_preprocessor",
-                prefix="candidates",
-                page_number=page_number,
-            )
-
-        tables: list[Table] = []
-
-        for idx, bbox in enumerate(sorted(table_bboxes, key=lambda b: (b.y_min, b.x_min))):
-            # Детектируем ячейки внутри таблицы
-            roi_mask = bbox.roi(binary_image)
-            h_line_roi_mask = image_utils.compute_horizontal_line_mask(
-                roi_mask, scale=self.cfg.scale_horizontal_line, iterations=2
-            )
-            h_raw_lines = table_helper.extract_raw_horizontal_lines(
-                roi_mask,
-                scale=self.cfg.scale_horizontal_line,
-                min_line_length=max(1, int(bbox.width // self.cfg.min_line_length_ratio)),
-                max_line_gap=max(1, int(bbox.width // self.cfg.max_line_gap_ratio)),
-            )
-
-            h_hough_lines = table_helper.extract_lines(
-                np.asarray(h_raw_lines, dtype=np.int32),
-                table_helper.LineAxis.Y,
-                axis_tol=self.cfg.h_axis_tol,
-                merge_gap=self.cfg.h_merge_gap,
-                min_len=self.cfg.h_min_line_length,
-            )
-            h_projection_lines = table_helper.extract_line_axes_from_mask(
-                h_line_roi_mask,
-                table_helper.LineAxis.Y,
-                min_coverage=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
-                axis_gap=self.cfg.h_axis_tol,
-                segment_gap=max(self.cfg.h_merge_gap, int(bbox.width // self.cfg.max_line_gap_ratio)),
-                min_len=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
-            )
-            h_lines = table_helper.merge_line_sets(
-                h_hough_lines,
-                h_projection_lines,
-                axis_tol=self.cfg.h_axis_tol,
-                merge_gap=self.cfg.h_merge_gap,
-                min_len=max(10, int(bbox.width // self.cfg.min_line_length_ratio)),
-            )
-            logger.debug(f"Горизонтальных линий в таблице {idx}: {len(h_lines)}")
-            if len(h_lines) == 0:
-                logger.debug(f"Пропущена таблица {idx}: не найдено горизонтальных линий")
-                continue
-
-            median_height = geometry_utils.median_axis_step(
-                np.array([axis for axis, _ in h_lines], dtype=np.int32),
-                default=0,
-                min_step=1,
-            )
-            if median_height <= 0:
-                logger.debug(f"Пропущена таблица {idx}: не удалось определить медианную высоту строк")
-                continue
-
-            logger.debug(f"Медианная высота строк в таблице {idx}: {median_height}")
-
-            v_line_roi_mask = image_utils.compute_vertical_line_mask(roi_mask, median_height=max(1, median_height))
-            v_raw_lines = table_helper.extract_raw_vertical_lines(
-                roi_mask,
-                median_height=max(1, median_height),
-                min_line_length=max(1, median_height),
-                max_line_gap=max(1, int(median_height * 0.8)),
-            )
-
-            v_hough_lines = table_helper.extract_lines(
-                np.asarray(v_raw_lines, dtype=np.int32),
-                table_helper.LineAxis.X,
-                axis_tol=self.cfg.v_axis_tol,
-                merge_gap=self.cfg.v_merge_gap,
-                min_len=median_height,
-            )
-            v_projection_lines = table_helper.extract_line_axes_from_mask(
-                v_line_roi_mask,
-                table_helper.LineAxis.X,
-                min_coverage=max(5, int(median_height * 0.6)),
-                axis_gap=self.cfg.v_axis_tol,
-                segment_gap=max(self.cfg.v_merge_gap, int(median_height * 0.8)),
-                min_len=max(5, int(median_height * 0.6)),
-            )
-            v_lines = table_helper.merge_line_sets(
-                v_hough_lines,
-                v_projection_lines,
-                axis_tol=self.cfg.v_axis_tol,
-                merge_gap=self.cfg.v_merge_gap,
-                min_len=max(5, int(median_height * 0.6)),
-            )
-            if len(v_lines) == 0:
-                logger.debug(f"Пропущена таблица {idx}: не найдено вертикальных линий")
-                continue
-
-            logger.debug(f"Вертикальных линий в таблице {idx}: {len(v_lines)}")
-            h_lines, v_lines = table_helper.filter_lines_without_intersections(h_lines, v_lines, tol=1)
-            logger.debug(f"После фильтрации пересечений: h={len(h_lines)}, v={len(v_lines)}")
-            median_width = geometry_utils.median_axis_step(
-                np.array([axis for axis, _ in v_lines], dtype=np.int32),
-                default=0,
-                min_step=1,
-            )
-            if median_width <= 0:
-                logger.debug(f"Пропущена таблица {idx}: не удалось определить медианную ширину столбцов")
-                continue
-
-            logger.debug(f"Медианная ширина столбцов в таблице {idx}: {median_width}")
-
-            x_min, y_min, x_max, y_max = bbox.to_tuple()
-
-            row_ys = table_helper.complete_grid_axes(
-                table_helper.axes_to_abs(h_lines, y_min),
-                axis_min=y_min,
-                axis_max=y_max,
-                expected_step=median_height // 2,
-            )
-
-            col_xs = table_helper.complete_grid_axes(
-                table_helper.axes_to_abs(v_lines, x_min),
-                axis_min=x_min,
-                axis_max=x_max,
-                expected_step=median_width // 2,
-            )
-
-            table = table_helper.build_table_from_grid(
-                bbox=bbox,
-                row_ys=row_ys,
-                col_xs=col_xs,
-                h_lines_box=h_lines,
-                v_lines_box=v_lines,
-                merge_mode=self.cfg.mode_merge_cells,
-                table_id=f"table_{idx}",
-            )
-
-            if not table.is_valid() or not table.validate_structure():
-                logger.debug(f"Пропущена таблица {table.id}: невалидная структура")
-                continue
-
-            logger.debug(f"Найдена таблица {table.id}: c {table.num_rows} строк и {table.num_cols} столбцов")
-            tables.append(table)
-
-        return tables
