@@ -56,7 +56,6 @@ class DocumentBuildPipeline:
             debug_image=debug_image,
         )
         self.table_detector = TableDetector(
-            preprocessor_config=cfg.table_preprocessor,
             table_detector_config=cfg.table_detector,
             debug_image=debug_image,
         )
