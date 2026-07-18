@@ -100,6 +100,11 @@ class TableDetectorConfig:
         - None - не объединяет ячейки
     """
 
+    min_area_frac: float = 0.005
+    min_w: float = 50
+    min_h: float = 30
+    min_overlap_ratio: float = 0.5
+
     ## detected raw table candidates
     scale_horizontal_line: int = 40
     height_vertical_line: int = 40
@@ -149,7 +154,7 @@ class PaddleOcrConfig:
     use_doc_orientation_classify: bool = False
     use_doc_unwarping: bool = False
     use_textline_orientation: bool = False
-    device: str = "cpu"
+    device: str = "gpu"
 
 
 @dataclass
