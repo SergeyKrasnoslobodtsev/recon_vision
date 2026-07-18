@@ -29,6 +29,24 @@ def apply_gamma_correction(rgb: np.ndarray, gamma: float = 1.2):
     return cv2.LUT(rgb, table)
 
 
+def binary_masked(gray: np.ndarray, k_gauss: int = 5, block_size: int = 11, c: int = 2):
+    """_summary_
+
+    Args:
+        gray (np.ndarray): _description_
+        k_gauss (int, optional): _description_. Defaults to 5.
+        block_size (int, optional): _description_. Defaults to 11.
+        c (int, optional): _description_. Defaults to 2.
+
+    Returns:
+        _type_: _description_
+    """
+    blur = cv2.GaussianBlur(gray, (k_gauss, k_gauss), 0)
+
+    binary = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block_size, c)
+    return binary
+
+
 def extract_lines_mask(bin_img: np.ndarray, v_scale: int = 10, h_scale: int = 40):
     """Шаг 2: MORPH_OPEN длинными осевыми ядрами -> убираем текст, оставляем линии сетки."""
     h, w = bin_img.shape
@@ -62,6 +80,62 @@ def repair_mask(mask, close_size=7):
     return mask_fixed
 
 
+def subtract_mask(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    return cv2.bitwise_and(image, cv2.bitwise_not(mask))
+
+
+def dilate_image(image: np.ndarray, kernel_size: tuple[int, int] = (1, 1), iterations: int = 1) -> np.ndarray:
+    return cv2.dilate(image, cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size), iterations=iterations)
+
+
+def filter_long_intersecting(
+    mask: np.ndarray, dilated_other: np.ndarray, min_length: int, is_vertical: bool
+) -> np.ndarray:
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+
+    stat_col = cv2.CC_STAT_HEIGHT if is_vertical else cv2.CC_STAT_WIDTH
+    long_enough = stats[:, stat_col] >= min_length
+    touching = _components_touching(labels, dilated_other > 0, n)
+
+    keep_labels = np.flatnonzero(long_enough & touching)
+    keep_labels = keep_labels[keep_labels != 0]  # 0 — фон
+
+    return _mask_from_labels(labels, keep_labels)
+
+
+def _components_touching(labels: np.ndarray, other_mask: np.ndarray, n_labels: int) -> np.ndarray:
+    return np.bincount(labels[other_mask], minlength=n_labels) > 0
+
+
+def _mask_from_labels(labels: np.ndarray, keep_labels: np.ndarray) -> np.ndarray:
+    return np.isin(labels, keep_labels).astype(np.uint8) * 255
+
+
+def morph_open(mask: np.ndarray, k_size=(1, 1)) -> np.ndarray:
+    return cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(
+            cv2.MORPH_RECT,
+            ksize=k_size,
+        ),
+    )
+
+
+def has_missing_text(content_mask: np.ndarray, min_area: int = 15, min_side: int = 4) -> bool:
+    """True, если в content_mask есть остаточный регион (нераспознанный текст)."""
+    n, _, stats, _ = cv2.connectedComponentsWithStats(content_mask)
+    if n <= 1:
+        return False
+
+    areas = stats[1:, cv2.CC_STAT_AREA]
+    widths = stats[1:, cv2.CC_STAT_WIDTH]
+    heights = stats[1:, cv2.CC_STAT_HEIGHT]
+
+    return bool(np.any((areas >= min_area) & (widths >= min_side) & (heights >= min_side)))
+
+
+# ------------------- legacy --------------------------
 def unsharp_mask(image: np.ndarray, kernel_size=(5, 5), sigma=1.5, amount=1.0) -> np.ndarray:
     """Применяет unsharp masking для повышения резкости изображения.
     Args:
@@ -103,24 +177,6 @@ def gamma_correction(image: np.ndarray, gamma: float = 10.0) -> np.ndarray:
     return gamma_img
 
 
-def binary_masked(gray: np.ndarray, k_gauss: int = 5, block_size: int = 11, c: int = 2):
-    """_summary_
-
-    Args:
-        gray (np.ndarray): _description_
-        k_gauss (int, optional): _description_. Defaults to 5.
-        block_size (int, optional): _description_. Defaults to 11.
-        c (int, optional): _description_. Defaults to 2.
-
-    Returns:
-        _type_: _description_
-    """
-    blur = cv2.GaussianBlur(gray, (k_gauss, k_gauss), 0)
-
-    binary = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, block_size, c)
-    return binary
-
-
 def binary_threshold(gray: np.ndarray, block_size: int = 15, C: int = 5) -> np.ndarray:
     """Преобразует изображение в бинарное с помощью адаптивного порога.
 
@@ -150,19 +206,6 @@ def compute_horizontal_line_mask(binary_image: np.ndarray, scale: int = 50, iter
     horizontal_lines = cv2.morphologyEx(binary_image, cv2.MORPH_OPEN, horiz_kernel, iterations=iterations)
 
     return horizontal_lines
-
-
-def dilate_image(image: np.ndarray, kernel_size: tuple[int, int] = (1, 1), iterations: int = 1) -> np.ndarray:
-    """Применяет операцию дилатации к изображению.
-
-    Args:
-        image: Входное бинаризованное изображение.
-        kernel_size: Размер структурного элемента для дилатации.
-        iterations: Количество итераций дилатации.
-    Returns:
-        np.ndarray: Изображение после применения дилатации.
-    """
-    return cv2.dilate(image, cv2.getStructuringElement(cv2.MORPH_RECT, kernel_size), iterations=iterations)
 
 
 def compute_vertical_line_mask(binary_image: np.ndarray, median_height: int = 0) -> np.ndarray:
