@@ -55,11 +55,13 @@ class DocumentBuildPipeline:
             cfg.page_orientation_preprocessor,
             debug_image=debug_image,
         )
+        self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
         self.table_detector = TableDetector(
             table_detector_config=cfg.table_detector,
+            ocr_engine=self.ocr_engine,
             debug_image=debug_image,
         )
-        self.ocr_engine = PaddleOcrEngine(cfg.paddleocr)
+
         self.cell_text_filler = CellTextFiller(
             cfg.ocr_confidence_threshold,
             debug_image=debug_image,
@@ -190,18 +192,14 @@ class DocumentBuildPipeline:
         image_ocr = self.image_preprocessor.process(aligned_image, page_number=page_number)
         logger.info("Предобработка завершена.")
 
-        logger.info("Детекция таблиц и ячеек...")
-        tables = self.table_detector.detect_tables(aligned_image, page_number=page_number)
-        logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
-        logger.info("Детекция таблиц и ячеек завершена.")
-
         logger.info("Распознавание текста OCR...")
         ocr_results, mean_confidence = self._run_ocr(image_ocr)
         logger.info("Распознавание текста OCR завершено.")
 
-        logger.info("Заполнение ячеек текстом...")
-        self.cell_text_filler.fill_cells(tables, ocr_results, image=aligned_image, page_number=page_number)
-        logger.info("Заполнение ячеек текстом завершено.")
+        logger.info("Детекция таблиц и ячеек...")
+        tables = self.table_detector.detect_tables(aligned_image, ocr_results, page_number=page_number)
+        logger.debug(f"Страница {page_number}: обнаружено таблиц: {len(tables)}")
+        logger.info("Детекция таблиц и ячеек завершена.")
 
         logger.info("Детекция абзацев...")
         filtered_ocr = self.cell_text_filler.exclude_table_text(ocr_results, tables)
