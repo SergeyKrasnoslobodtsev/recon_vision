@@ -16,8 +16,8 @@ from vision_core.entities.table import Table
 
 from .exceptions import DcExtractionError
 
-_SELLER_KEYWORDS = {"ОТ ПРОДАВЦА", "ПРОДАВЕЦ", "ПО ДАННЫМ ПРОДАВЦА"}
-_BUYER_KEYWORDS = {"ОТ ПОКУПАТЕЛЯ", "ПОКУПАТЕЛЬ", "ПО ДАННЫМ ПОКУПАТЕЛЯ"}
+_SELLER_KEYWORDS = {"ОТ ПРОДАВЦА", "ПРОДАВЕЦ", "ПО ДАННЫМ ПРОДАВЦА", "ПО ДАННЫМ ИСПОЛНИТЕЛЯ"}
+_BUYER_KEYWORDS = {"ОТ ПОКУПАТЕЛЯ", "ПОКУПАТЕЛЬ", "ПО ДАННЫМ ПОКУПАТЕЛЯ", "ПО ДАННЫМ ЗАКАЗЧИКА"}
 
 
 @dataclass
