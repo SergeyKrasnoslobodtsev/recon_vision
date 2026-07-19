@@ -293,11 +293,14 @@ class TestCurrencies:
             ("47 761,70", 47761.70),
             ("0,00", 0.0),
             ("1 000,00", 1000.0),
+            ("-809 335,64", -809335.64),
+            ("-554 379,08", -554379.08),
+            ("-47 761,70", -47761.70),
         ],
     )
     def test_parse(
         self,
-        text: Literal["23 035 017,97"] | Literal["47 761,70"] | Literal["0,00"] | Literal["1 000,00"],
+        text: str,
         expected: float,
     ):
         result = currencies(tokenize(text))
@@ -309,6 +312,18 @@ class TestCurrencies:
         result = currencies(tokenize(text))
         ref = result[0]
         assert text[ref.token.start : ref.token.end] == ref.token.text
+
+    def test_negative_token_includes_minus(self):
+        text = "-809 335,64"
+        result = currencies(tokenize(text))
+        assert len(result) == 1
+        assert result[0].token.text == "-809 335,64"
+
+    def test_negative_not_confused_with_range(self):
+        # диапазон дат "12-2024" не должен матчиться как отрицательная валюта
+        text = "12-2024"
+        result = currencies(tokenize(text))
+        assert len(result) == 0
 
 
 # ---------------------------------------------------------------------------
