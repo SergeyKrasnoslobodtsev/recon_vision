@@ -19,7 +19,6 @@ table_detector:
   scale_height: 0.08
   min_density: 0.01
   intersection_over_min_thr: 0.2
-  scale_horizontal_line: 20
   min_line_length_ratio: 8
   max_line_gap_ratio: 10
   h_axis_tol: 5

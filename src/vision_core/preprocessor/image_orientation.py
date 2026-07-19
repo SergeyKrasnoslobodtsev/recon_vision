@@ -26,10 +26,7 @@ class PageOrientationPreprocessor:
             raise FileNotFoundError(f"Директория модели ориентации документа не найдена: {self.cfg.model_dir}")
 
         try:
-            self.model = DocImgOrientationClassification(
-                model_name=self.cfg.model_name,
-                model_dir=self.cfg.model_dir,
-            )
+            self.model = DocImgOrientationClassification(model_name=self.cfg.model_name, model_dir=self.cfg.model_dir)
         except Exception as e:
             raise ModelLoadError(details=str(e)) from e
 
@@ -46,7 +43,7 @@ class PageOrientationPreprocessor:
         orientation_deg, orientation_score = self.classify(image)
         logger.debug(f"Ориентация страницы: {orientation_deg}° с точностью {orientation_score:.4f}")
 
-        if orientation_score >= self.cfg.min_orientation_score:
+        if orientation_score >= self.cfg.min_orientation_score and orientation_deg != 180:
             metadata["orientation_deg"] = orientation_deg
             metadata["orientation_score"] = orientation_score
             aligned_image = _rotate_by_orientation(image, orientation_deg)
