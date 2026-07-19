@@ -100,6 +100,11 @@ class TableDetectorConfig:
         - None - не объединяет ячейки
     """
 
+    min_area_frac: float = 0.005
+    min_w: float = 50
+    min_h: float = 30
+    min_overlap_ratio: float = 0.5
+
     ## detected raw table candidates
     scale_horizontal_line: int = 40
     height_vertical_line: int = 40

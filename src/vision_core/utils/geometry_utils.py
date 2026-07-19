@@ -22,6 +22,16 @@ def find_contours(binary_image: np.ndarray) -> list[np.ndarray]:
     return cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[0]
 
 
+def find_top_level_contours(binary_image: np.ndarray) -> list[np.ndarray]:
+    """Находит контуры верхнего уровня (без родителя) на бинаризованном изображении.
+    ...
+    """
+    contours, hierarchy = cv2.findContours(binary_image, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return []
+    return [c for c, h in zip(contours, hierarchy[0], strict=False) if h[3] == -1]
+
+
 def bounding_rect(contour: np.ndarray) -> tuple[int, int, int, int]:
     """Вычисляет ограничивающий прямоугольник для данного контура.
 
