@@ -107,8 +107,8 @@ class TableDetector:
         row_pix = sum_pixel_axis(mask, axis=1)
         col_pix = sum_pixel_axis(mask, axis=0)
 
-        row_peaks = find_lines_with_edges(row_pix, distance=10, prominence_frac=0.2)
-        col_peaks = find_lines_with_edges(col_pix, distance=20, prominence_frac=0.2)
+        row_peaks = find_lines_with_edges(row_pix, distance=20, prominence_frac=0.3)
+        col_peaks = find_lines_with_edges(col_pix, distance=20, prominence_frac=0.3)
 
         row_peaks = merge_thin_lines(row_peaks, median_height * 0.8)
         col_peaks = merge_thin_lines(col_peaks, median_height * 0.8)
