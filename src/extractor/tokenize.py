@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import calendar
 import re
 from dataclasses import dataclass
 
@@ -100,6 +101,13 @@ _RE_NUMERIC_DATE = re.compile(r"\b(\d{1,2})[./](\d{1,2})[./](\d{2,4})\b")
 _RE_RU_DATE = re.compile(r"\b(\d{1,2})\s+(" + _MONTHS_RU + r")\s+(\d{4})(?:\s*Г\.?)?")
 _RE_QUARTER = re.compile(r"\b([1-4]|I{1,3}V?|VI{0,3})\s+КВАРТАЛ[А-ЯЁ]*\s+(\d{4})\b")
 _RE_YEAR = re.compile(r"\bЗА\s+(\d{4})\s+ГОД\b")
+_RE_MONTH_YEAR_RANGE = re.compile(
+    r"\b(" + _MONTHS_RU + r")\s+(\d{4})\s*Г?\.?\s*-\s*(" + _MONTHS_RU + r")\s+(\d{4})\s*Г?\.?\b"
+)
+
+
+def _month_last_day(month_num: str, year: str) -> str:
+    return f"{calendar.monthrange(int(year), int(month_num))[1]:02d}"
 
 
 def _month_num(name: str) -> str:
@@ -152,6 +160,20 @@ def _find_dates(text: str) -> list[DateReference]:
                 token=Token(m.start(), m.end(), m.group()),
                 date=f"01.01.{year}",
                 date_end=f"31.12.{year}",
+            )
+        )
+
+    for m in _RE_MONTH_YEAR_RANGE.finditer(text):
+        start_month = _month_num(m.group(1))
+        start_year = m.group(2)
+        end_month = _month_num(m.group(3))
+        end_year = m.group(4)
+        end_day = _month_last_day(end_month, end_year)
+        refs.append(
+            DateReference(
+                token=Token(m.start(), m.end(), m.group()),
+                date=f"01.{start_month}.{start_year}",
+                date_end=f"{end_day}.{end_month}.{end_year}",
             )
         )
 
@@ -339,7 +361,7 @@ _OCR_DIGIT_FIX = str.maketrans("ОоOolI|", "0000111")
 # Числовой кандидат: захватывает весь блок целиком включая OCR-разделители
 # Alt 1: минимум 2 цифры с чем угодно между ними (пробел, , ; .)
 # Alt 2: одиночная цифра
-_RE_CURRENCY_CANDIDATE = re.compile(r"\b\d[\d\s,;.]*\d\b|\b\d\b")
+_RE_CURRENCY_CANDIDATE = re.compile(r"(?<!\w)-?\d[\d\s,;.]*\d\b|(?<!\w)-?\d\b")
 
 # DD.MM без года — валидные месяцы 01-12
 _RE_DATE_LIKE = re.compile(r"^\d{1,2}[./](?:0[1-9]|1[0-2])$")
@@ -355,7 +377,11 @@ _RE_CURRENCY_UNIT_AFTER = re.compile(r"^\s*(РУБЛЕЙ|РУБ[А-ЯЁ.]*|RUB)\
 
 
 def _is_non_currency(text: str, start: int, end: int) -> bool:
-    if start > 0 and text[start - 1] in "-/":
+    if text[start] == "-":
+        # минус — часть диапазона/кода, если перед ним тоже цифра/буква (12-34, id-5)
+        if start > 0 and (text[start - 1].isalnum()):
+            return True
+    elif start > 0 and text[start - 1] in "-/":
         return True
     if start > 0 and text[start - 1] == ".":
         if start >= 2 and (text[start - 2].isdigit() or text[start - 2].isalpha()):
@@ -381,6 +407,7 @@ def _has_words_in_context(text: str, start: int, end: int) -> bool:
 
 def _parse_currency(raw: str) -> float:
     """Парсит денежное значение: все цифры, последние 2 — копейки."""
+    is_negative = raw.strip().startswith("-")
     digits = re.sub(r"\D", "", raw.translate(_OCR_DIGIT_FIX))
     if not digits:
         return 0.0
@@ -388,7 +415,8 @@ def _parse_currency(raw: str) -> float:
         digits = digits.zfill(3)
     rubles = digits[:-2].lstrip("0") or "0"
     kopecks = digits[-2:]
-    return float(f"{rubles}.{kopecks}")
+    value = float(f"{rubles}.{kopecks}")
+    return -value if is_negative else value
 
 
 def _find_currencies(text: str) -> list[CurrencyReference]:
