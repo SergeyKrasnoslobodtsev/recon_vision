@@ -100,7 +100,8 @@ class TableDetector:
         tables = [tables[i] for i in valid_idx]
         median_heights = [median_heights[i] for i in valid_idx]
 
-        merge_pairs = find_merge_candidates(tables, median_heights, x_overlap_thr=0.9, max_gap_in_medians=2.5)
+        merge_pairs = find_merge_candidates(tables, self.ocr_bboxes, median_heights, max_gap_in_medians=1.5)
+
         return merge_table_groups(tables, merge_pairs)
 
     def _build_grid(self, mask: np.ndarray, median_height: float) -> tuple[np.ndarray, np.ndarray]:
@@ -180,32 +181,44 @@ class TableDetector:
 
 def find_merge_candidates(
     tables: list[Table],
+    ocr_bboxes: list[BBox],
     median_heights: list[float],
-    x_overlap_thr: float = 0.9,
-    max_gap_in_medians: float = 2.0,
+    max_gap_in_medians: float = 1.5,
 ) -> list[tuple[int, int]]:
-    """Находит пары соседних по вертикали таблиц с совпадающим числом столбцов,
-    высоким перекрытием по x и разрывом не больше max_gap_in_medians медиан высоты строки."""
+    """Находит пары соседних по вертикали таблиц с совпадающим числом столбцов.
+    Кандидат на объединение, если текстовый блок в зазоре между таблицами
+    примыкает к обеим границам (отступ <= половины его высоты). При отсутствии
+    текста в зазоре — fallback на разрыв по median_height."""
     merge_pairs = []
     for i in range(len(tables) - 1):
         a, b = tables[i], tables[i + 1]
 
-        if _x_overlap_ratio(a.bbox, b.bbox) < x_overlap_thr:
-            continue
         if a.num_cols != b.num_cols:
             continue
 
-        gap = b.bbox.y_min - a.bbox.y_max
-        if gap > max_gap_in_medians * max(median_heights[i], median_heights[i + 1]):
+        between = _text_blocks_between(ocr_bboxes, a.bbox.y_max, b.bbox.y_min)
+
+        if not between:
+            gap = b.bbox.y_min - a.bbox.y_max
+            if gap <= max_gap_in_medians * max(median_heights[i], median_heights[i + 1]):
+                merge_pairs.append((i, i + 1))
+            continue
+
+        first_block = min(between, key=lambda blk: blk.y_min)
+        last_block = max(between, key=lambda blk: blk.y_max)
+
+        if (first_block.y_min - a.bbox.y_max) > first_block.height / 2:
+            continue
+        if (b.bbox.y_min - last_block.y_max) > last_block.height / 2:
             continue
 
         merge_pairs.append((i, i + 1))
     return merge_pairs
 
 
-def _x_overlap_ratio(a: BBox, b: BBox) -> float:
-    overlap = max(0.0, min(a.x_max, b.x_max) - max(a.x_min, b.x_min))
-    return overlap / min(a.width, b.width)
+def _text_blocks_between(bboxes: list[BBox], y_top: float, y_bottom: float) -> list[BBox]:
+    """OCR-блоки, полностью лежащие в зазоре между таблицами по Y."""
+    return [b for b in bboxes if b.y_min >= y_top and b.y_max <= y_bottom]
 
 
 def merge_table_groups(tables: list[Table], merge_pairs: list[tuple[int, int]]) -> list[Table]:
