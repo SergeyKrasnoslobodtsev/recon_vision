@@ -36,6 +36,4 @@ class OcrEngine(Protocol):
     Позволяет легко подключать различные реализации распознавания текста.
     """
 
-    def predict(
-        self, images: np.ndarray | list[np.ndarray]
-    ) -> list[list[OcrResult]]: ...
+    def predict(self, images: np.ndarray | list[np.ndarray]) -> list[list[OcrResult]]: ...

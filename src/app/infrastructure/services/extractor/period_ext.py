@@ -9,7 +9,7 @@ from extractor.process import extract
 from extractor.tokenize import DateReference
 from vision_core.entities.document import Document
 
-_KEYWORDS = {"САЛЬДО", "ПЕРИОД"}
+_KEYWORDS = {"САЛЬДО", "ПЕРИОД", " НА "}
 _KEYWORD_WINDOW = 30
 
 
@@ -56,16 +56,17 @@ def _try_extract(text: str) -> Period | None:
 
 def extract_period(document: Document) -> Period:
     """Сначала ищет период в ячейках таблицы, затем в абзацах."""
-    table_text = _collect_table_text(document)
-    period = _try_extract(table_text)
-    if period and period.start:
-        logger.info(f"период (таблица): {period.start} - {period.end}")
-        return period
 
     para_text = _collect_paragraph_text(document)
     period = _try_extract(para_text)
     if period and period.start:
         logger.info(f"период (абзацы): {period.start} - {period.end}")
+        return period
+
+    table_text = _collect_table_text(document)
+    period = _try_extract(table_text)
+    if period and period.start:
+        logger.info(f"период (таблица): {period.start} - {period.end}")
         return period
 
     logger.warning("период не определён")

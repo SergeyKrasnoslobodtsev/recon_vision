@@ -12,22 +12,10 @@ table_preprocessor:
   C: 5
 
 table_detector:
-  scale_horizontal_line: 40
-  height_vertical_line: 40
-  border_tol: 8
-  scale_width: 0.35
-  scale_height: 0.08
-  min_density: 0.01
-  intersection_over_min_thr: 0.2
-  scale_horizontal_line: 20
-  min_line_length_ratio: 8
-  max_line_gap_ratio: 10
-  h_axis_tol: 5
-  h_merge_gap: 5
-  h_min_line_length: 200
-  max_line_gap_ratio_v: 0.1
-  v_axis_tol: 5
-  v_merge_gap: 5
+  min_area_frac: 0.005
+  min_w: 50
+  min_h: 30
+  min_overlap_ratio: 0.5
   mode_merge_cells: cols
 
 paddleocr:
@@ -38,7 +26,7 @@ paddleocr:
   use_doc_orientation_classify: false
   use_doc_unwarping: false
   use_textline_orientation: false
-  device: gpu
+  device: cpu
 
 page_orientation_preprocessor:
   model_name: PP-LCNet_x1_0_doc_ori
