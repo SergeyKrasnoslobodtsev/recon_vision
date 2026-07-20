@@ -100,7 +100,7 @@ class TableDetector:
         tables = [tables[i] for i in valid_idx]
         median_heights = [median_heights[i] for i in valid_idx]
 
-        merge_pairs = find_merge_candidates(tables, self.ocr_bboxes, median_heights, max_gap_in_medians=1.5)
+        merge_pairs = find_merge_candidates(tables, self.ocr_bboxes, median_heights, max_gap_in_medians=1.0)
 
         return merge_table_groups(tables, merge_pairs)
 
@@ -108,7 +108,7 @@ class TableDetector:
         row_pix = sum_pixel_axis(mask, axis=1)
         col_pix = sum_pixel_axis(mask, axis=0)
 
-        row_peaks = find_lines_with_edges(row_pix, distance=20, prominence_frac=0.3)
+        row_peaks = find_lines_with_edges(row_pix, distance=10, prominence_frac=0.3)
         col_peaks = find_lines_with_edges(col_pix, distance=20, prominence_frac=0.3)
 
         row_peaks = merge_thin_lines(row_peaks, median_height * 0.8)
