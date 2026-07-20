@@ -72,26 +72,7 @@ class TableDetectorConfig:
     """Конфигурация детектора таблиц
 
     Attributes:
-        scale_horizontal_line: Минимальная длина горизонтальной линии для расчета кандидатов таблиц
-        height_vertical_line: Минимальная длина вертикальной линии для расчета кандидатов таблиц
-        border_tol: Допуск для расширения границ таблицы при извлечении кандидатов таблиц
-        scale_width: Масштаб для расширения границ таблицы по ширине при извлечении кандидатов таблиц
-        scale_height: Масштаб для расширения границ таблицы по высоте при извлечении кандидатов таблиц
-        min_density: Минимальная плотность линий для учета таблицы при извлечении кандидатов таблиц
-        intersection_over_min_thr: Минимальное пересечение с линиями для учета таблицы при извлечении кандидатов таблиц
-        scale_horizontal_line: Минимальная длина горизонтальной линии (расчитывается на основе ширины таблицы),
-            для объединения линий при извлечении ячеек
-        min_line_length_ratio: Минимальная длина линии для объединения при извлечении ячеек, рассчитывается как ширина
-            таблицы, делённая на min_line_length_ratio
-        max_line_gap_ratio: Максимальный разрыв между линиями для объединения при извлечении ячеек, рассчитывается
-            как ширина таблицы, делённая на max_line_gap_ratio
-        h_axis_tol: Допуск для определения горизонтальных линий при извлечении ячеек
-        h_merge_gap: Максимальный разрыв между горизонтальными линиями для их объединения при извлечении ячеек
-        h_min_line_length: Минимальная длина горизонтальной линии для её учета при извлечении ячеек
-        max_line_gap_ratio_v: Максимальный разрыв между вертикальными линиями для объединения при извлечении ячеек,
-            рассчитывается как медианная высота строк, умноженная на max_line_gap_ratio_v
-        v_axis_tol: Допуск для определения вертикальных линий при извлечении ячеек
-        v_merge_gap: Максимальный разрыв между вертикальными линиями для их объединения при извлечении ячеек
+
 
         mode_merge_cells: Режим объединения ячеек поддерживает:
         - all - объединяет строки и столбцы
@@ -105,29 +86,29 @@ class TableDetectorConfig:
     min_h: float = 30
     min_overlap_ratio: float = 0.5
 
-    ## detected raw table candidates
-    scale_horizontal_line: int = 40
-    height_vertical_line: int = 40
-    border_tol: int = 8
-    scale_width: float = 0.35
-    scale_height: float = 0.08
-    min_density: float = 0.01
-    intersection_over_min_thr: float = 0.2
+    # ## detected raw table candidates
+    # scale_horizontal_line: int = 40
+    # height_vertical_line: int = 40
+    # border_tol: int = 8
+    # scale_width: float = 0.35
+    # scale_height: float = 0.08
+    # min_density: float = 0.01
+    # intersection_over_min_thr: float = 0.2
 
-    # detected raw horizontal lines
-    scale_horizontal_line: int = 20
-    min_line_length_ratio: int = 8
-    max_line_gap_ratio: int = 10
+    # # detected raw horizontal lines
+    # scale_horizontal_line: int = 20
+    # min_line_length_ratio: int = 8
+    # max_line_gap_ratio: int = 10
 
-    # axis horizontal lines
-    h_axis_tol: int = 5
-    h_merge_gap: int = 5
-    h_min_line_length: int = 200
+    # # axis horizontal lines
+    # h_axis_tol: int = 5
+    # h_merge_gap: int = 5
+    # h_min_line_length: int = 200
 
-    # detected raw vertical lines
-    max_line_gap_ratio_v: float = 0.1
-    v_axis_tol: int = 5
-    v_merge_gap: int = 5
+    # # detected raw vertical lines
+    # max_line_gap_ratio_v: float = 0.1
+    # v_axis_tol: int = 5
+    # v_merge_gap: int = 5
 
     mode_merge_cells: str | None = "cols"
 
