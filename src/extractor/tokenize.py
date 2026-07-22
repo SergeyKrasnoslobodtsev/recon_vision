@@ -405,16 +405,27 @@ def _has_words_in_context(text: str, start: int, end: int) -> bool:
     return bool(re.search(r"[А-ЯЁ]{2,}", window))
 
 
+_RE_DECIMAL_TAIL = re.compile(r"[.,;](\d{1,2})$")
+
+
 def _parse_currency(raw: str) -> float:
-    """Парсит денежное значение: все цифры, последние 2 — копейки."""
+    """Парсит денежное значение по позиции последнего разделителя дробной части.
+
+    Разделитель перед 1-2 цифрами в конце строки — граница копеек (при одной
+    цифре дополняется нулём справа: ",4" -> 40 коп.). Разделитель перед 3+
+    цифрами — разряд тысяч, а не дробная часть, вся строка идёт в рубли.
+    """
     is_negative = raw.strip().startswith("-")
-    digits = re.sub(r"\D", "", raw.translate(_OCR_DIGIT_FIX))
-    if not digits:
-        return 0.0
-    if len(digits) < 3:
-        digits = digits.zfill(3)
-    rubles = digits[:-2].lstrip("0") or "0"
-    kopecks = digits[-2:]
+    cleaned = raw.translate(_OCR_DIGIT_FIX)
+
+    tail = _RE_DECIMAL_TAIL.search(cleaned)
+    if tail:
+        kopecks = tail.group(1).ljust(2, "0")
+        rubles = re.sub(r"\D", "", cleaned[: tail.start()]).lstrip("0") or "0"
+    else:
+        rubles = re.sub(r"\D", "", cleaned).lstrip("0") or "0"
+        kopecks = "00"
+
     value = float(f"{rubles}.{kopecks}")
     return -value if is_negative else value
 
