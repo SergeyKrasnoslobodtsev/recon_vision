@@ -160,15 +160,24 @@ def transform_text(text: str) -> str:
 _OCR_FIX = str.maketrans("ОоOolI|", "0000111")
 
 
+_RE_DECIMAL_TAIL = re.compile(r"[.,;](\d{1,2})$")
+
+
 def transform_currency(text: str | None) -> float:
     """
     Парсит денежное значение из OCR-строки в float.
-    Последние 2 цифры — копейки, остальные — рубли.
+
+    Если в конце строки есть разделитель (, . ;) перед 1-2 цифрами — это граница
+    копеек (при одной цифре дополняется нулём справа: ",4" -> 40 коп.), а всё до
+    него — рубли. Без такого разделителя — старое правило: последние 2 цифры
+    всей строки — копейки, остальные — рубли.
 
     Примеры:
       "1 649 669,47" -> 1649669.47
       "47 761,70"    -> 47761.70
+      "1 636 276,4"  -> 1636276.40  (одна цифра после запятой -> копейки *10)
       "1 649 669,4О" -> 1649669.40  (кириллическая О -> 0)
+      "100"          -> 1.00        (без разделителя — старое правило)
       "-"            -> 0.0
       None           -> 0.0
     """
@@ -176,6 +185,17 @@ def transform_currency(text: str | None) -> float:
         return 0.0
 
     fixed = text.translate(_OCR_FIX)
+
+    tail = _RE_DECIMAL_TAIL.search(fixed)
+    if tail:
+        rubles_digits = re.sub(r"\D", "", fixed[: tail.start()])
+        if not rubles_digits:
+            if text.strip() not in ("", "-", "—", "–"):
+                raise ValueError(f"parse_currency: не удалось извлечь цифры из {text!r}")
+            return 0.0
+        kopecks = tail.group(1).ljust(2, "0")
+        return int(rubles_digits) + int(kopecks) / 100
+
     digits = re.sub(r"\D", "", fixed)
 
     if not digits:

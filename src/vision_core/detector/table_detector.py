@@ -67,12 +67,12 @@ class TableDetector:
 
             median_heights.append(float(median_height))
 
-            mask, content_mask = self._clean_mask_table(tbl, bboxes, median_height)
+            mask, content_mask, v_mask, h_mask = self._clean_mask_table(tbl, bboxes, median_height)
 
             row_ys, col_xs = self._build_grid(mask, median_height)
 
-            is_vborder = detect_vertical_borders(mask, row_ys, col_xs)
-            is_hborder = detect_horizontal_borders(mask, row_ys, col_xs)
+            is_vborder = detect_vertical_borders(v_mask, row_ys, col_xs)
+            is_hborder = detect_horizontal_borders(h_mask, row_ys, col_xs)
 
             n_rows = len(row_ys) - 1
             n_cols = len(col_xs) - 1
@@ -108,7 +108,7 @@ class TableDetector:
         row_pix = sum_pixel_axis(mask, axis=1)
         col_pix = sum_pixel_axis(mask, axis=0)
 
-        row_peaks = find_lines_with_edges(row_pix, distance=10, prominence_frac=0.3)
+        row_peaks = find_lines_with_edges(row_pix, distance=20, prominence_frac=0.3)
         col_peaks = find_lines_with_edges(col_pix, distance=20, prominence_frac=0.3)
 
         row_peaks = merge_thin_lines(row_peaks, median_height * 0.8)
@@ -124,9 +124,9 @@ class TableDetector:
         candidate_tbl: BBox,
         bboxes: list[BBox],
         median_height: float,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
-        text_mask = text_mask_inset(candidate_tbl, bboxes, pix=3)
+        text_mask = text_mask_inset(candidate_tbl, bboxes, pix=5)
         no_text_mask = image_utils.subtract_mask(candidate_tbl.roi(self._binary_img_clean_lines), text_mask)
         no_text_mask = image_utils.get_mask(no_text_mask, candidate_tbl.roi(self._mask_fixed))
 
@@ -135,11 +135,12 @@ class TableDetector:
         v_mask = image_utils.morph_open(no_text_mask, (1, 7))
         h_mask = image_utils.morph_open(no_text_mask, (int(candidate_tbl.width // 10), 1))
 
-        mask_finaly = keep_lines_with_intersections(v_mask, h_mask, 1, median_height)
+        v_keep, h_keep = keep_lines_with_intersections(v_mask, h_mask, 1, median_height)
+        mask_finaly = image_utils.get_mask(v_keep, h_keep)
 
         content_mask = image_utils.subtract_mask(no_text_mask, mask_finaly)
 
-        return (mask_finaly, content_mask)
+        return (mask_finaly, content_mask, v_keep, h_keep)
 
     def _find_table_candidates(self, bboxes: list[BBox]) -> list[BBox]:
         cnts = geometry_utils.find_top_level_contours(self._mask_fixed)
@@ -499,7 +500,7 @@ def detect_vertical_borders(
     row_ys: np.ndarray,
     col_xs: np.ndarray,
     tolerance: int = 20,
-    prominence_frac: float = 0.2,
+    prominence_frac: float = 0.3,
 ) -> np.ndarray:
     return _detect_borders(mask, row_ys, col_xs, tolerance, prominence_frac, is_vertical=True)
 
@@ -509,7 +510,7 @@ def detect_horizontal_borders(
     row_ys: np.ndarray,
     col_xs: np.ndarray,
     tolerance: int = 20,
-    prominence_frac: float = 0.2,
+    prominence_frac: float = 0.3,
 ) -> np.ndarray:
     return _detect_borders(mask, col_xs, row_ys, tolerance, prominence_frac, is_vertical=False).T
 
@@ -595,7 +596,7 @@ def keep_lines_with_intersections(v_mask, h_mask, dilate_size=1, min_length=15):
     v_keep = image_utils.filter_long_intersecting(v_mask, h_dilated, min_length, is_vertical=True)
     h_keep = image_utils.filter_long_intersecting(h_mask, v_dilated, min_length, is_vertical=False)
 
-    return image_utils.get_mask(v_keep, h_keep)
+    return v_keep, h_keep
 
 
 def text_mask_inset(table_bbox: BBox, bboxes: list[BBox], pix: int = 5) -> np.ndarray:

@@ -52,15 +52,17 @@ class ParagraphDetector:
             logger.warning("OCR-результаты пусты, параграфы не обнаружены")
             return []
 
-        median_row_height = self._median_row_height(ocr_results) * 0.5
+        median_row_height = self._median_row_height(ocr_results)
+        line_tolerance = median_row_height * 0.5
         table_bboxes = [t.bbox for t in tables]
 
         regions = self._preprocessor.extract_regions(image, table_bboxes, median_row_height)
-        paragraphs = self._map_ocr_to_regions(ocr_results, regions, median_row_height)
+        paragraphs = self._map_ocr_to_regions(ocr_results, regions, line_tolerance)
+        paragraphs = self._merge_same_line(paragraphs, line_tolerance)
 
         page_shape = (image.shape[0], image.shape[1])
-        paragraphs = [p.classify_by_position(page_shape, table_bboxes, median_row_height) for p in paragraphs]
-        paragraphs = self._reading_order(paragraphs, median_row_height)
+        paragraphs = [p.classify_by_position(page_shape, table_bboxes, line_tolerance) for p in paragraphs]
+        paragraphs = self._reading_order(paragraphs, line_tolerance)
 
         if self._debug:
             self._debug.on_detected_boxes(
@@ -88,11 +90,34 @@ class ParagraphDetector:
         heights = [float(r.bbox[3] - r.bbox[1]) for r in ocr_results]
         return float(np.median(heights)) if heights else 1.0
 
-    def _map_ocr_to_regions(self, ocr_results: list[OcrResult], regions: list[BBox], line_tolerance) -> list[Paragraph]:
-        paragraphs: list[Paragraph] = []
-        for region in regions:
-            matched = [r for r in ocr_results if region.contains_center(BBox.from_tuple(r.bbox))]
+    def _best_region_idx(self, regions: list[BBox], ocr_bbox: BBox, min_overlap_ratio: float = 0.6) -> int | None:
+        """Находит один лучший регион для OCR-блока: приоритет — попадание центра,
+        иначе — максимальная доля перекрытия (не ниже min_overlap_ratio)."""
+        centered = [i for i, region in enumerate(regions) if region.contains_center(ocr_bbox)]
+        if centered:
+            if len(centered) == 1 or ocr_bbox.area == 0:
+                return centered[0]
+            return max(centered, key=lambda i: regions[i].intersect(ocr_bbox))
 
+        if ocr_bbox.area == 0:
+            return None
+
+        best_idx, best_ratio = None, min_overlap_ratio
+        for i, region in enumerate(regions):
+            ratio = region.intersect(ocr_bbox) / ocr_bbox.area
+            if ratio > best_ratio:
+                best_idx, best_ratio = i, ratio
+        return best_idx
+
+    def _map_ocr_to_regions(self, ocr_results: list[OcrResult], regions: list[BBox], line_tolerance) -> list[Paragraph]:
+        region_matches: list[list[OcrResult]] = [[] for _ in regions]
+        for r in ocr_results:
+            idx = self._best_region_idx(regions, BBox.from_tuple(r.bbox))
+            if idx is not None:
+                region_matches[idx].append(r)
+
+        paragraphs: list[Paragraph] = []
+        for matched in region_matches:
             if not matched:
                 continue
 

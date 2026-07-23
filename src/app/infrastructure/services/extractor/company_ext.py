@@ -107,31 +107,45 @@ def _org_token(full_name: str) -> str:
     return full_name.split(",", 1)[0].strip()
 
 
-def _extract_orgs(raw: str) -> list[str]:
+def _org_counts(raw: str) -> dict[str, tuple[str, int]]:
+    """token -> (полное имя с формой, число упоминаний токена в тексте)."""
     result = extract(raw)
-    seen: dict[str, str] = {}
+    counts: dict[str, int] = {}
+    names: dict[str, str] = {}
     for ref in result.tokens:
         if isinstance(ref, OrganizationReference):
             full = _org_full_name(ref)
             token = _org_token(full)
-            if token not in seen:
-                seen[token] = full
-    return list(seen.values())
+            counts[token] = counts.get(token, 0) + 1
+            names.setdefault(token, full)
+    return {token: (names[token], counts[token]) for token in names}
 
 
-def _deduplicate_orgs(orgs: list[str]) -> list[str]:
-    seen: dict[str, str] = {}
-    for org in orgs:
-        token = _org_token(org)
-        if token not in seen:
-            seen[token] = org
-    unique = list(seen.values())
-    tokens = [_org_token(o) for o in unique]
-    return [
-        org
-        for i, org in enumerate(unique)
-        if not any(tokens[i] in tokens[j] and tokens[i] != tokens[j] for j in range(len(tokens)))
+def _merge_org_counts(*sources: dict[str, tuple[str, int]]) -> dict[str, tuple[str, int]]:
+    merged: dict[str, tuple[str, int]] = {}
+    for src in sources:
+        for token, (full, count) in src.items():
+            prev_full, prev_count = merged.get(token, (full, 0))
+            merged[token] = (prev_full, prev_count + count)
+    return merged
+
+
+def _dominant_orgs(counts: dict[str, tuple[str, int]]) -> list[str]:
+    """Уникальные организации, отсортированные по числу упоминаний (убывание).
+
+    Если токен одной организации — подстрока токена другой (например, мусорный
+    токен из-за регэкспа, склеившего два разных `АО "..."` через текст подписи
+    между ними), побеждает не более длинный, а более часто встречающийся —
+    частые упоминания сильнее говорят о реальной компании, чем длина совпадения.
+    """
+    tokens = list(counts.keys())
+    kept = [
+        (full, count)
+        for token, (full, count) in counts.items()
+        if not any(token != other and token in other and counts[other][1] >= count for other in tokens)
     ]
+    kept.sort(key=lambda x: x[1], reverse=True)
+    return [full for full, _ in kept]
 
 
 # ---------------------------------------------------------------------------
@@ -239,19 +253,18 @@ def extract_companies(document: Document) -> list[Company]:
     summary_text = _build_summary_text(document)
     cell_texts = _build_summary_cell_texts(document)
 
-    orgs_from_text = _extract_orgs(summary_text)
-    orgs_from_cells = _deduplicate_orgs([o for t in cell_texts for o in _extract_orgs(t)])
+    text_counts = _org_counts(summary_text)
+    cell_counts = _merge_org_counts(*(_org_counts(t) for t in cell_texts))
 
+    orgs_from_cells = _dominant_orgs(cell_counts)
     if len(orgs_from_cells) >= 2:
-        candidates = orgs_from_cells
+        merged_counts = cell_counts
     elif orgs_from_cells:
-        candidates = orgs_from_cells + [
-            o for o in orgs_from_text if _org_token(o) not in {_org_token(c) for c in orgs_from_cells}
-        ]
+        merged_counts = _merge_org_counts(cell_counts, text_counts)
     else:
-        candidates = orgs_from_text
+        merged_counts = text_counts
 
-    candidates = _deduplicate_orgs(candidates)
+    candidates = _dominant_orgs(merged_counts)
     logger.info(f"кандидаты: {candidates}")
 
     if not candidates:

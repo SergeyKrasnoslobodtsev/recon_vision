@@ -86,30 +86,6 @@ class TableDetectorConfig:
     min_h: float = 30
     min_overlap_ratio: float = 0.5
 
-    # ## detected raw table candidates
-    # scale_horizontal_line: int = 40
-    # height_vertical_line: int = 40
-    # border_tol: int = 8
-    # scale_width: float = 0.35
-    # scale_height: float = 0.08
-    # min_density: float = 0.01
-    # intersection_over_min_thr: float = 0.2
-
-    # # detected raw horizontal lines
-    # scale_horizontal_line: int = 20
-    # min_line_length_ratio: int = 8
-    # max_line_gap_ratio: int = 10
-
-    # # axis horizontal lines
-    # h_axis_tol: int = 5
-    # h_merge_gap: int = 5
-    # h_min_line_length: int = 200
-
-    # # detected raw vertical lines
-    # max_line_gap_ratio_v: float = 0.1
-    # v_axis_tol: int = 5
-    # v_merge_gap: int = 5
-
     mode_merge_cells: str | None = "cols"
 
 
